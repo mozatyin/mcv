@@ -90,10 +90,13 @@ def _safe_json_arr(text: str) -> list:
 
 
 class PersonaDecider:
-    def __init__(self, personas: list[Persona], api_key: str, mode: str = "fast"):
+    def __init__(self, personas: list[Persona], api_key: str, mode: str | None = None):
         self.personas = personas
         self.api_key = api_key
-        self.mode = mode
+        if mode is not None:
+            self.mode = mode
+        else:
+            self.mode = os.environ.get("DECISION_MODE", "fast")
 
     def classify(
         self,
