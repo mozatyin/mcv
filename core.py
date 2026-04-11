@@ -103,7 +103,9 @@ class PersonaDecider:
         batch: list[dict[str, Any]] | None = None,
     ) -> "DecisionResult | list[DecisionResult]":
         if self.mode == "validated":
-            raise NotImplementedError("validated mode implemented in Task 5")
+            if batch:
+                return self._validated_classify_batch(question, options, context, batch)
+            return self._validated_classify_single(question, options, context)
         return self._fast_classify(question, options, context, batch)
 
     def _fast_classify(
@@ -183,7 +185,9 @@ class PersonaDecider:
         batch: list[dict[str, Any]] | None = None,
     ) -> "DecisionResult | list[DecisionResult]":
         if self.mode == "validated":
-            raise NotImplementedError("validated mode implemented in Task 5")
+            if batch:
+                return self._validated_score_batch(question, lo, hi, context, batch)
+            return self._validated_score_single(question, lo, hi, context)
         return self._fast_score(question, lo, hi, context, batch)
 
     def _fast_score(
@@ -257,9 +261,199 @@ class PersonaDecider:
 
     def validate(self, assertion: str, context: str) -> DecisionResult:
         if self.mode == "validated":
-            raise NotImplementedError("validated mode implemented in Task 5")
+            return self._validated_validate(assertion, context)
         return self._fast_validate(assertion, context)
 
+    # ------------------------------------------------------------------ validated
+    def _validated_validate(self, assertion: str, context: str) -> DecisionResult:
+        votes: list[bool] = []
+        total_tokens = 0
+        for persona in self.personas:
+            prompt = (
+                f"You are: {persona.name} ({persona.cohort})\n"
+                f"Motivations: {', '.join(persona.motivations)}\n"
+                f"Pain points: {', '.join(persona.pain_points)}\n\n"
+                f"Context: {context}\n"
+                f"Assertion: {assertion}\n\n"
+                f'Reply with JSON only: {{"result": true|false, "reasoning": "one sentence"}}'
+            )
+            raw, tokens = _llm_call(prompt, self.api_key)
+            data = _safe_json(raw)
+            votes.append(bool(data.get("result", False)))
+            total_tokens += tokens
+        true_frac = sum(votes) / len(votes)
+        value = true_frac >= 0.5
+        confidence = true_frac if value else (1 - true_frac)
+        return DecisionResult(
+            value=value,
+            confidence=round(confidence, 4),
+            distribution={"true": round(true_frac, 4), "false": round(1 - true_frac, 4)},
+            mode=self.mode,
+            tokens_used=total_tokens,
+            raw_votes=votes,
+        )
+
+    def _validated_classify_single(
+        self, question: str, options: list[str], context: str
+    ) -> DecisionResult:
+        from collections import Counter
+        votes: list[str] = []
+        total_tokens = 0
+        options_str = " | ".join(options)
+        for persona in self.personas:
+            prompt = (
+                f"You are: {persona.name} ({persona.cohort})\n"
+                f"Motivations: {', '.join(persona.motivations)}\n"
+                f"Pain points: {', '.join(persona.pain_points)}\n\n"
+                f"Context: {context}\n"
+                f"Question: {question}\n"
+                f"Options: {options_str}\n\n"
+                f'Reply with JSON only: {{"choice": "...", "reasoning": "one sentence"}}'
+            )
+            raw, tokens = _llm_call(prompt, self.api_key)
+            data = _safe_json(raw)
+            votes.append(data.get("choice", options[0]))
+            total_tokens += tokens
+        counts = Counter(votes)
+        winner, winner_count = counts.most_common(1)[0]
+        total = len(votes)
+        dist = {opt: round(counts.get(opt, 0) / total, 4) for opt in options}
+        return DecisionResult(
+            value=winner,
+            confidence=round(winner_count / total, 4),
+            distribution=dist,
+            mode=self.mode,
+            tokens_used=total_tokens,
+            raw_votes=votes,
+        )
+
+    def _validated_classify_batch(
+        self, question: str, options: list[str], context: str,
+        batch: list[dict[str, Any]]
+    ) -> list[DecisionResult]:
+        from collections import Counter
+        id_votes: dict[str, list[str]] = {item["id"]: [] for item in batch}
+        total_tokens = 0
+        options_str = " | ".join(options)
+        items_json = json.dumps([
+            {"id": item["id"], "name": item.get("name", item["id"])} for item in batch
+        ])
+        for persona in self.personas:
+            prompt = (
+                f"You are: {persona.name} ({persona.cohort})\n"
+                f"Motivations: {', '.join(persona.motivations)}\n"
+                f"Pain points: {', '.join(persona.pain_points)}\n\n"
+                f"Context: {context}\n"
+                f"Question: {question}\n"
+                f"Options: {options_str}\n\n"
+                f"Items to classify:\n{items_json}\n\n"
+                f'Reply with JSON array only: [{{"id": "...", "choice": "..."}}]'
+            )
+            raw, tokens = _llm_call(prompt, self.api_key, max_tokens=1024)
+            arr = _safe_json_arr(raw)
+            for item_vote in arr:
+                if isinstance(item_vote, dict):
+                    fid = item_vote.get("id", "")
+                    if fid in id_votes:
+                        id_votes[fid].append(item_vote.get("choice", options[0]))
+            total_tokens += tokens
+        per_item_tokens = total_tokens // max(len(batch), 1)
+        results = []
+        for item in batch:
+            votes = id_votes[item["id"]] or [options[0]]
+            counts = Counter(votes)
+            winner, winner_count = counts.most_common(1)[0]
+            total = len(votes)
+            dist = {opt: round(counts.get(opt, 0) / total, 4) for opt in options}
+            results.append(DecisionResult(
+                value=winner,
+                confidence=round(winner_count / total, 4),
+                distribution=dist,
+                mode=self.mode,
+                tokens_used=per_item_tokens,
+                raw_votes=votes,
+            ))
+        return results
+
+    def _validated_score_single(
+        self, question: str, lo: float, hi: float, context: str
+    ) -> DecisionResult:
+        import statistics
+        votes: list[float] = []
+        total_tokens = 0
+        for persona in self.personas:
+            prompt = (
+                f"You are: {persona.name} ({persona.cohort})\n"
+                f"Motivations: {', '.join(persona.motivations)}\n"
+                f"Pain points: {', '.join(persona.pain_points)}\n\n"
+                f"Context: {context}\n"
+                f"Question: {question} (scale: {lo}–{hi})\n\n"
+                f'Reply with JSON only: {{"score": <number>, "reasoning": "one sentence"}}'
+            )
+            raw, tokens = _llm_call(prompt, self.api_key)
+            data = _safe_json(raw)
+            v = max(lo, min(hi, _to_float(data.get("score"), (lo + hi) / 2)))
+            votes.append(v)
+            total_tokens += tokens
+        avg = statistics.mean(votes)
+        stdev = statistics.stdev(votes) if len(votes) > 1 else 0.0
+        confidence = max(0.0, 1.0 - stdev / max(hi - lo, 1e-6))
+        return DecisionResult(
+            value=round(avg, 4),
+            confidence=round(confidence, 4),
+            distribution={"mean": round(avg, 4), "stdev": round(stdev, 4)},
+            mode=self.mode,
+            tokens_used=total_tokens,
+            raw_votes=votes,
+        )
+
+    def _validated_score_batch(
+        self, question: str, lo: float, hi: float, context: str,
+        batch: list[dict[str, Any]]
+    ) -> list[DecisionResult]:
+        import statistics
+        id_votes: dict[str, list[float]] = {item["id"]: [] for item in batch}
+        total_tokens = 0
+        items_json = json.dumps([
+            {"id": item["id"], "name": item.get("name", item["id"])} for item in batch
+        ])
+        for persona in self.personas:
+            prompt = (
+                f"You are: {persona.name} ({persona.cohort})\n"
+                f"Motivations: {', '.join(persona.motivations)}\n"
+                f"Pain points: {', '.join(persona.pain_points)}\n\n"
+                f"Context: {context}\n"
+                f"Question: {question} (scale: {lo}–{hi})\n\n"
+                f"Items to score:\n{items_json}\n\n"
+                f'Reply with JSON array only: [{{"id": "...", "score": <number>}}]'
+            )
+            raw, tokens = _llm_call(prompt, self.api_key, max_tokens=1024)
+            arr = _safe_json_arr(raw)
+            for item_score in arr:
+                if isinstance(item_score, dict):
+                    fid = item_score.get("id", "")
+                    if fid in id_votes:
+                        v = max(lo, min(hi, _to_float(item_score.get("score"), (lo + hi) / 2)))
+                        id_votes[fid].append(v)
+            total_tokens += tokens
+        per_item_tokens = total_tokens // max(len(batch), 1)
+        results = []
+        for item in batch:
+            votes = id_votes[item["id"]] or [(lo + hi) / 2]
+            avg = statistics.mean(votes)
+            stdev = statistics.stdev(votes) if len(votes) > 1 else 0.0
+            confidence = max(0.0, 1.0 - stdev / max(hi - lo, 1e-6))
+            results.append(DecisionResult(
+                value=round(avg, 4),
+                confidence=round(confidence, 4),
+                distribution={"mean": round(avg, 4), "stdev": round(stdev, 4)},
+                mode=self.mode,
+                tokens_used=per_item_tokens,
+                raw_votes=votes,
+            ))
+        return results
+
+    # ------------------------------------------------------------------ fast
     def _fast_validate(self, assertion: str, context: str) -> DecisionResult:
         persona = self.personas[0]
         prompt = (
