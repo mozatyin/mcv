@@ -68,3 +68,12 @@ def test_score_fallback_midpoint_on_missing(mock_llm):
     )
     assert abs(results[0].value - 9.0) < 0.01
     assert abs(results[1].value - 5.0) < 0.01  # midpoint fallback
+
+
+@patch("mcv.core._llm_call")
+def test_score_non_numeric_falls_back_to_midpoint(mock_llm):
+    """Non-numeric score from LLM should not crash — falls back to midpoint."""
+    mock_llm.return_value = ('{"score": "high", "reasoning": "vague"}', 30)
+    pd = PersonaDecider(PERSONAS, api_key="test", mode="fast")
+    result = pd.score("Q", lo=0.0, hi=10.0, context="ctx")
+    assert result.value == 5.0  # midpoint fallback

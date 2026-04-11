@@ -65,6 +65,14 @@ def _safe_json(text: str) -> dict:
     return {}
 
 
+def _to_float(val: Any, fallback: float) -> float:
+    """Convert val to float, returning fallback on failure."""
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return fallback
+
+
 def _safe_json_arr(text: str) -> list:
     """Parse JSON array from LLM response."""
     text = text.strip()
@@ -208,7 +216,7 @@ class PersonaDecider:
             raw, tokens = _llm_call(prompt, self.api_key, max_tokens=1024)
             arr = _safe_json_arr(raw)
             id_to_score: dict[str, float] = {
-                item.get("id", ""): float(item.get("score", (lo + hi) / 2))
+                item.get("id", ""): _to_float(item.get("score"), (lo + hi) / 2)
                 for item in arr
                 if isinstance(item, dict)
             }
@@ -237,7 +245,7 @@ class PersonaDecider:
         )
         raw, tokens = _llm_call(prompt, self.api_key)
         data = _safe_json(raw)
-        v = _clamp(float(data.get("score", (lo + hi) / 2)))
+        v = _clamp(_to_float(data.get("score"), (lo + hi) / 2))
         return DecisionResult(
             value=v,
             confidence=1.0,
