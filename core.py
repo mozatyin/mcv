@@ -1,8 +1,6 @@
 """Monte Carlo Voter — core types and PersonaDecider."""
 from __future__ import annotations
 
-import json
-import os
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,11 +31,11 @@ class PersonaDecider:
         self.api_key = api_key
         self.mode = mode
 
-    def classify(self, question: str, options: list[str], context: str, batch: list[dict] | None = None) -> "DecisionResult | list[DecisionResult]":
+    def classify(self, question: str, options: list[str], context: str, batch: list[dict[str, Any]] | None = None) -> DecisionResult | list[DecisionResult]:
         raise NotImplementedError
 
-    def score(self, question: str, lo: float, hi: float, context: str, batch: list[dict] | None = None) -> "DecisionResult | list[DecisionResult]":
+    def score(self, question: str, lo: float, hi: float, context: str, batch: list[dict[str, Any]] | None = None) -> DecisionResult | list[DecisionResult]:
         raise NotImplementedError
 
-    def validate(self, assertion: str, context: str) -> "DecisionResult":
+    def validate(self, assertion: str, context: str) -> DecisionResult:
         raise NotImplementedError
