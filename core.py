@@ -65,14 +65,106 @@ def _safe_json(text: str) -> dict:
     return {}
 
 
+def _safe_json_arr(text: str) -> list:
+    """Parse JSON array from LLM response."""
+    text = text.strip()
+    text = re.sub(r'^```(?:json)?\s*', '', text)
+    text = re.sub(r'\s*```$', '', text)
+    m = re.search(r'\[.*\]', text, re.DOTALL)
+    if m:
+        try:
+            result = json.loads(m.group())
+            if isinstance(result, list):
+                return result
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return []
+
+
 class PersonaDecider:
     def __init__(self, personas: list[Persona], api_key: str, mode: str = "fast"):
         self.personas = personas
         self.api_key = api_key
         self.mode = mode
 
-    def classify(self, question: str, options: list[str], context: str, batch: list[dict[str, Any]] | None = None) -> DecisionResult | list[DecisionResult]:
-        raise NotImplementedError
+    def classify(
+        self,
+        question: str,
+        options: list[str],
+        context: str,
+        batch: list[dict[str, Any]] | None = None,
+    ) -> "DecisionResult | list[DecisionResult]":
+        if self.mode == "validated":
+            raise NotImplementedError("validated mode implemented in Task 5")
+        return self._fast_classify(question, options, context, batch)
+
+    def _fast_classify(
+        self,
+        question: str,
+        options: list[str],
+        context: str,
+        batch: list[dict[str, Any]] | None,
+    ) -> "DecisionResult | list[DecisionResult]":
+        persona = self.personas[0]
+        options_str = " | ".join(options)
+
+        if batch:
+            items_json = json.dumps([
+                {"id": item["id"], "name": item.get("name", item["id"])}
+                for item in batch
+            ])
+            prompt = (
+                f"You are: {persona.name} ({persona.cohort})\n"
+                f"Motivations: {', '.join(persona.motivations)}\n"
+                f"Pain points: {', '.join(persona.pain_points)}\n\n"
+                f"Context: {context}\n"
+                f"Question: {question}\n"
+                f"Options: {options_str}\n\n"
+                f"Items to classify:\n{items_json}\n\n"
+                f'Reply with JSON array only: [{{"id": "...", "choice": "..."}}]'
+            )
+            raw, tokens = _llm_call(prompt, self.api_key, max_tokens=1024)
+            arr = _safe_json_arr(raw)
+            id_to_choice = {
+                item.get("id", ""): item.get("choice", options[0])
+                for item in arr
+                if isinstance(item, dict)
+            }
+            per_item_tokens = tokens // max(len(batch), 1)
+            results = []
+            for item in batch:
+                choice = id_to_choice.get(item["id"], options[0])
+                results.append(DecisionResult(
+                    value=choice,
+                    confidence=1.0,
+                    distribution={choice: 1.0},
+                    mode=self.mode,
+                    tokens_used=per_item_tokens,
+                    raw_votes=[choice],
+                ))
+            return results
+
+        # Single item
+        prompt = (
+            f"You are: {persona.name} ({persona.cohort})\n"
+            f"Motivations: {', '.join(persona.motivations)}\n"
+            f"Pain points: {', '.join(persona.pain_points)}\n\n"
+            f"Context: {context}\n"
+            f"Question: {question}\n"
+            f"Options: {options_str}\n\n"
+            f'Reply with JSON only: {{"choice": "...", "reasoning": "one sentence"}}'
+        )
+        raw, tokens = _llm_call(prompt, self.api_key)
+        data = _safe_json(raw)
+        choice = data.get("choice", options[0])
+        return DecisionResult(
+            value=choice,
+            confidence=1.0,
+            distribution={choice: 1.0},
+            mode=self.mode,
+            tokens_used=tokens,
+            raw_votes=[choice],
+        )
 
     def score(self, question: str, lo: float, hi: float, context: str, batch: list[dict[str, Any]] | None = None) -> DecisionResult | list[DecisionResult]:
         raise NotImplementedError
