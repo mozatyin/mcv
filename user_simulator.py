@@ -46,6 +46,11 @@ def _build_session_prompt(
     domain_config: DomainConfig,
     screen_id: str | None = None,
 ) -> str:
+    """Build the per-session LLM prompt from user type, context, product, and metrics.
+
+    The prompt instructs third-person behavior narration followed by one answer
+    per metric. screen_id optionally focuses the session on a specific wireframe screen.
+    """
     product_section = product
     if screen_id:
         product_section = f"[只关注 screen_id='{screen_id}' 的部分]\n{product}"
