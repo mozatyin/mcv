@@ -40,7 +40,7 @@ def _build_simulation_prompt(
     features: list[dict],
     context: ScenarioContext,
 ) -> str:
-    feature_lines = "\n".join(f"- {f['id']}" for f in features)
+    feature_lines = "\n".join(f"- {f['id']}: {f['name']}" for f in features)
     return (
         f"You are roleplaying as {persona['name']}.\n\n"
         f"Who you are:\n"

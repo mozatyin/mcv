@@ -13,7 +13,7 @@ PERSONAS = [
 FEATURES = [
     {"id": "f1", "name": "daily soul check-in"},
     {"id": "f2", "name": "star map"},
-    {"id": "f3", "name": "crisis score tracker"},
+    {"id": "f3", "name": "crisis journal"},
 ]
 
 MOCK_RESPONSE = """
