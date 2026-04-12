@@ -104,8 +104,88 @@ class PersonaSimulator:
         self.personas = personas
         self.api_key = api_key
 
-    def simulate(self, features: list[dict], n_runs: int = 5) -> list[FeatureSignal]:
-        raise NotImplementedError
+    def simulate(
+        self,
+        features: list[dict],
+        n_runs: int = 5,
+    ) -> list[FeatureSignal]:
+        """Run N sessions per persona. Aggregate into empirical FeatureSignal per feature.
+
+        Total LLM calls = len(personas) × n_runs.
+        Each call uses Haiku at temperature=1.0 (true stochasticity).
+        """
+        from mcv.scenarios import random_context
+        from collections import defaultdict
+
+        feature_ids = [f["id"] for f in features]
+        feature_name_map = {f["id"]: f["name"] for f in features}
+
+        all_runs: list[SimulationRun] = []
+
+        for persona in self.personas:
+            role = persona.get("role")
+            for _ in range(n_runs):
+                ctx = random_context(role=role)
+                run = self._simulate_one(persona, features, ctx)
+                all_runs.append(run)
+
+        total = len(all_runs)
+        if total == 0:
+            return []
+
+        signals = []
+        for fid in feature_ids:
+            used_runs = [r for r in all_runs if fid in r.features_used]
+            skipped_runs = [r for r in all_runs if fid in r.features_skipped]
+            exposed_runs = used_runs + skipped_runs
+
+            usage_rate = len(used_runs) / total
+            exposure_rate = len(exposed_runs) / total
+            skip_rate = len(skipped_runs) / total
+
+            # context_map: usage_rate per emotional_state
+            states: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+            for run in all_runs:
+                state = run.context.emotional_state
+                states[state][1] += 1
+                if fid in run.features_used:
+                    states[state][0] += 1
+            context_map = {
+                state: round(counts[0] / counts[1], 4)
+                for state, counts in states.items()
+                if counts[1] > 0
+            }
+
+            # day_curve: usage_rate per usage_day
+            days: dict[int, list[int]] = defaultdict(lambda: [0, 0])
+            for run in all_runs:
+                day = run.context.usage_day
+                days[day][1] += 1
+                if fid in run.features_used:
+                    days[day][0] += 1
+            day_curve = {
+                day: round(counts[0] / counts[1], 4)
+                for day, counts in days.items()
+                if counts[1] > 0
+            }
+
+            implied_kano = _derive_kano(usage_rate)
+            implied_aarrr = _derive_aarrr(day_curve)
+
+            signals.append(FeatureSignal(
+                feature_id=fid,
+                feature_name=feature_name_map.get(fid, fid),
+                n_simulations=total,
+                usage_rate=round(usage_rate, 4),
+                exposure_rate=round(exposure_rate, 4),
+                skip_rate=round(skip_rate, 4),
+                context_map=context_map,
+                day_curve=day_curve,
+                implied_kano=implied_kano,
+                implied_aarrr_score=implied_aarrr,
+            ))
+
+        return signals
 
     def _simulate_one(
         self,
