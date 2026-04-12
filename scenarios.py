@@ -56,3 +56,33 @@ def random_context(role: str | None = None) -> ScenarioContext:
         usage_day=usage_day,
         trigger=trigger,
     )
+
+
+def random_context_for_domain(
+    role: str | None = None,
+    domain_config=None,
+) -> ScenarioContext:
+    """Generate scenario context using DomainConfig options.
+
+    Falls back to random_context() if domain_config is None.
+    """
+    if domain_config is None:
+        return random_context(role=role)
+
+    time_of_day = random.choice(domain_config.time_options)
+    emotional_state = random.choice(domain_config.emotional_states)
+
+    if role and role in domain_config.user_roles:
+        usage_day = random.choice(domain_config.user_roles[role])
+    else:
+        all_days = [d for days in domain_config.user_roles.values() for d in days]
+        usage_day = random.choice(all_days) if all_days else 1
+
+    trigger = random.choice(domain_config.triggers)
+
+    return ScenarioContext(
+        time_of_day=time_of_day,
+        emotional_state=emotional_state,
+        usage_day=usage_day,
+        trigger=trigger,
+    )
