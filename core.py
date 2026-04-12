@@ -33,14 +33,28 @@ def _model_name(api_key: str) -> str:
     return "claude-sonnet-4-6"
 
 
-def _llm_call(prompt: str, api_key: str, max_tokens: int = 512) -> tuple[str, int]:
+def _haiku_model(api_key: str) -> str:
+    """Haiku model ID — used for simulation (cheap, fast)."""
+    return "claude-haiku-4-5-20251001"
+
+
+def _llm_call(
+    prompt: str,
+    api_key: str,
+    max_tokens: int = 512,
+    temperature: float = 0.0,
+    model: str | None = None,
+) -> tuple[str, int]:
     """Single LLM call → (response_text, tokens_used)."""
     import anthropic
+    _model = model or _model_name(api_key)
     kwargs: dict = dict(
-        model=_model_name(api_key),
+        model=_model,
         max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
+    if temperature > 0.0:
+        kwargs["temperature"] = temperature
     if api_key.startswith("sk-or-"):
         client = anthropic.Anthropic(api_key=api_key, base_url="https://openrouter.ai/api/v1")
     else:
