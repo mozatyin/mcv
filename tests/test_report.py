@@ -75,3 +75,10 @@ def test_aggregate_missing_metric_values():
     sessions = [SessionResult(CTX, "叙述...", {})]  # no values parsed
     report = aggregate(sessions, metrics, "玩家", "游戏")
     assert report.metrics["ret"].true_rate == 0.0
+
+
+def test_aggregate_text_skips_llm_with_fewer_than_3_values():
+    """Text aggregation with api_key but < 3 values → no LLM call, empty themes."""
+    r = _aggregate_text(["只有一条"], api_key="test")
+    assert r.themes == []
+    assert r.samples == ["只有一条"]
