@@ -86,3 +86,10 @@ def test_simulate_stores_session_results():
     from mcv.user_simulator import SessionResult
     assert all(isinstance(r, SessionResult) for r in sim._session_results)
     assert sim._session_results[0].values.get("ret") == "yes"
+
+
+def test_simulate_raises_if_prepare_not_called():
+    sim = UserSimulator("玩家", GameDomainConfig, api_key="test")
+    import pytest
+    with pytest.raises(RuntimeError, match="prepare"):
+        sim.simulate(n_runs=1)

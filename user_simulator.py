@@ -118,6 +118,8 @@ class UserSimulator:
 
     def simulate(self, n_runs: int = 60) -> "UserSimulator":
         """Run N independent sessions at temperature=1.0. Returns self for chaining."""
+        if not self._product:
+            raise RuntimeError("call prepare() before simulate()")
         import mcv.core as _core
         self._session_results = []
         roles = list(self.domain_config.user_roles.keys())
