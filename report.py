@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from mcv.schema_extractor import EvaluationMetric
 from mcv.user_simulator import SessionResult
@@ -30,10 +30,12 @@ class SimulationReport:
     user_type: str
     product_summary: str
     metrics: dict[str, MetricResult]
-    key_findings: str = ""
+    key_findings: str = ""  # populated externally if needed
 
 
 def _aggregate_bool(values: list[str]) -> MetricResult:
+    # Unrecognized values (e.g. "maybe", "有可能") count as false.
+    # At temperature=1.0, hedged answers depress true_rate slightly — this is intentional.
     if not values:
         return MetricResult(name="", type="bool", true_rate=0.0)
     true_count = sum(
@@ -46,9 +48,9 @@ def _aggregate_bool(values: list[str]) -> MetricResult:
 def _aggregate_scale(values: list[str]) -> MetricResult:
     nums = []
     for v in values:
-        m = re.search(r"[1-5]", v)
+        m = re.search(r'(?<!\d)([1-5])(?!\d)', v)
         if m:
-            nums.append(int(m.group()))
+            nums.append(int(m.group(1)))
     if not nums:
         return MetricResult(name="", type="scale_1_5", mean=0.0, distribution={})
     mean = round(sum(nums) / len(nums), 4)
