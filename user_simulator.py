@@ -88,3 +88,72 @@ def _parse_session_output(raw: str, metrics: list[EvaluationMetric]) -> dict[str
                 values[metric.name] = m.group(1).strip()
                 break
     return values
+
+
+class UserSimulator:
+    """Domain-agnostic behavioral simulation engine.
+
+    Usage:
+        sim = UserSimulator("18岁手游玩家", GameDomainConfig, api_key=key)
+        sim.prepare(product=prd_text, goal="玩家会在Day-1后回来吗？")
+        report = sim.simulate(n_runs=60).report()
+    """
+
+    def __init__(self, user_type: str, domain_config: DomainConfig, api_key: str):
+        self.user_type = user_type
+        self.domain_config = domain_config
+        self.api_key = api_key
+        self._metrics: list[EvaluationMetric] = []
+        self._product: str = ""
+        self._screen_id: str | None = None
+        self._session_results: list[SessionResult] = []
+
+    def prepare(self, product: str, goal: str, screen_id: str | None = None) -> "UserSimulator":
+        """Extract EvaluationSchema from goal. Call before simulate()."""
+        from mcv.schema_extractor import extract_evaluation_schema
+        self._product = product
+        self._screen_id = screen_id
+        self._metrics = extract_evaluation_schema(goal, self.api_key)
+        return self
+
+    def simulate(self, n_runs: int = 60) -> "UserSimulator":
+        """Run N independent sessions at temperature=1.0. Returns self for chaining."""
+        import mcv.core as _core
+        self._session_results = []
+        roles = list(self.domain_config.user_roles.keys())
+        for i in range(n_runs):
+            role = roles[i % len(roles)] if roles else None
+            ctx = _random_context_for_domain(role, self.domain_config)
+            prompt = _build_session_prompt(
+                user_type=self.user_type,
+                context=ctx,
+                product=self._product,
+                metrics=self._metrics,
+                domain_config=self.domain_config,
+                screen_id=self._screen_id,
+            )
+            raw, _ = _core._llm_call(
+                prompt,
+                self.api_key,
+                max_tokens=800,
+                temperature=1.0,
+                model=_core._haiku_model(self.api_key),
+            )
+            values = _parse_session_output(raw, self._metrics)
+            self._session_results.append(SessionResult(
+                scenario=ctx,
+                narrative=raw,
+                values=values,
+            ))
+        return self
+
+    def report(self) -> "SimulationReport":
+        """Aggregate session results into SimulationReport."""
+        from mcv.report import aggregate
+        return aggregate(
+            self._session_results,
+            self._metrics,
+            self.user_type,
+            self._product[:100],
+            api_key=self.api_key,
+        )
