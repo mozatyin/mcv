@@ -98,3 +98,10 @@ def test_pool_all_traits_in_0_10():
     for a in agents:
         for val in a.trait_vector.values():
             assert 0.0 <= val <= 10.0
+
+def test_pool_ids_unique_across_multiple_generate_calls():
+    pool = PersonaPool(_make_structure())
+    agents1 = pool.generate(5)
+    agents2 = pool.generate(5)
+    all_ids = [a.agent_id for a in agents1 + agents2]
+    assert len(set(all_ids)) == 10

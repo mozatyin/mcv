@@ -57,6 +57,7 @@ class PersonaPool:
 
     def __init__(self, structure: PersonaStructure):
         self._structure = structure
+        self._counter = 0
 
     def generate(self, n: int) -> list[AgentProfile]:
         """Generate N agents sampled from structure distributions."""
@@ -84,8 +85,9 @@ class PersonaPool:
                 val = max(0.0, min(10.0, val)) # clip to absolute scale
                 trait_vector[dim.name] = round(val, 2)
 
+            self._counter += 1
             agents.append(AgentProfile(
-                agent_id=f"agent_{i+1:03d}",
+                agent_id=f"agent_{self._counter:03d}",
                 archetype_name=arch.name,
                 trait_vector=trait_vector,
             ))
