@@ -136,3 +136,11 @@ def test_behavioral_constraints_covers_all_traits():
     text = agent.to_behavioral_constraints(dims)
     assert "high patience" in text
     assert "solo player" in text
+
+def test_behavioral_constraints_mid_trait():
+    dims = [TraitDimension("patience", "Patience level", "quits fast", "very patient", "normal", 5.0, 2.0, "space2")]
+    agent = AgentProfile("a1", "Arch", {"patience": 5.0})
+    text = agent.to_behavioral_constraints(dims)
+    # Mid-range should reference the dimension description, not raw snake_case name
+    assert "patience level" in text.lower()
+    assert "patience" in text  # dim.name=5.0 still appears in the value part

@@ -68,7 +68,7 @@ class AgentProfile:
                 label = dim.high_label
                 intensity = "有些"
             else:
-                label = f"在{dim.name}上处于中间状态"
+                label = f"neutral on {dim.description.lower()}"
                 intensity = ""
             lines.append(f"- {intensity}{label}（{dim.name}={val:.1f}/10）")
 
