@@ -41,6 +41,7 @@ def test_persona_structure_fields():
     )
     assert ps.population_label == "Arabic Ludo Players"
     assert len(ps.archetypes) == 2
+    assert ps.research_notes == ""
 
 def test_agent_profile_fields():
     ap = AgentProfile(
