@@ -4,7 +4,7 @@ Three spaces merged into PersonaStructure → PersonaPool → AgentProfile per s
 """
 from __future__ import annotations
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import mcv.core as _core
 
 
@@ -46,6 +46,7 @@ class AgentProfile:
     agent_id: str
     archetype_name: str
     trait_vector: dict[str, float]    # {trait_name: value (0-10)}
+    dims: list = field(default_factory=list, repr=False, compare=False)  # TraitDimension list from pool
 
     def to_behavioral_constraints(self, dimensions: list["TraitDimension"]) -> str:
         """Convert trait vector to behavioral constraint string for session prompt.
@@ -274,8 +275,8 @@ class PersonaPool:
                 agent_id=f"agent_{self._counter:03d}",
                 archetype_name=arch.name,
                 trait_vector=trait_vector,
+                dims=dims,
             )
-            agent._dims = dims  # attach dims for to_behavioral_constraints()
             agents.append(agent)
 
         return agents

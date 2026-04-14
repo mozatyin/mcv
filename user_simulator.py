@@ -162,7 +162,7 @@ class UserSimulator:
         for i in range(n_runs):
             if self._agent_pool:
                 agent = self._agent_pool[i % len(self._agent_pool)]
-                dims = getattr(agent, "_dims", [])
+                dims = agent.dims
                 user_type_text = agent.to_behavioral_constraints(dims)
                 role = None
             else:
