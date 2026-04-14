@@ -238,3 +238,50 @@ def test_researcher_fallback_on_invalid_json():
     assert isinstance(result, PersonaStructure)
     assert result.research_notes == "fallback — LLM parsing failed"
     assert len(result.archetypes) == 2
+
+
+def test_prepare_with_pool_sets_pool():
+    from mcv.user_simulator import UserSimulator
+    from mcv.domain_configs import AppDomainConfig
+    from mcv.schema_extractor import EvaluationMetric
+    sim = UserSimulator("test user", AppDomainConfig, api_key="test")
+    agents = PersonaPool(_make_structure()).generate(6)
+    metrics = [EvaluationMetric("day1_return", "bool", "会回来吗？")]
+    sim.prepare_with_pool(product="test product", pool=agents, locked_metrics=metrics)
+    assert sim._agent_pool == agents
+    assert sim._metrics == metrics
+
+def test_simulate_with_pool_uses_behavioral_constraints():
+    """Each session prompt should contain anti-rationalization text from AgentProfile."""
+    from mcv.user_simulator import UserSimulator
+    from mcv.domain_configs import AppDomainConfig
+    from mcv.schema_extractor import EvaluationMetric
+    from unittest.mock import patch
+    sim = UserSimulator("test user", AppDomainConfig, api_key="test")
+    agents = PersonaPool(_make_structure()).generate(6)
+    metrics = [EvaluationMetric("day1_return", "bool", "会回来吗？")]
+    sim.prepare_with_pool(product="test product", pool=agents, locked_metrics=metrics)
+    captured_prompts = []
+    def fake_llm(prompt, api_key, **kwargs):
+        captured_prompts.append(prompt)
+        return "day1_return: yes", {}
+    with patch("mcv.core._llm_call", side_effect=fake_llm):
+        sim.simulate(n_runs=6)
+    assert len(captured_prompts) == 6
+    # All prompts should contain anti-rationalization text
+    for p in captured_prompts:
+        assert "放弃" in p or "abandon" in p.lower()
+
+def test_simulate_with_pool_cycles_when_n_exceeds_pool():
+    """If n_runs > len(pool), cycles through pool."""
+    from mcv.user_simulator import UserSimulator
+    from mcv.domain_configs import AppDomainConfig
+    from mcv.schema_extractor import EvaluationMetric
+    from unittest.mock import patch
+    sim = UserSimulator("test user", AppDomainConfig, api_key="test")
+    agents = PersonaPool(_make_structure()).generate(6)
+    metrics = [EvaluationMetric("day1_return", "bool", "会回来吗？")]
+    sim.prepare_with_pool(product="test product", pool=agents, locked_metrics=metrics)
+    with patch("mcv.core._llm_call", return_value=("day1_return: yes", {})):
+        sim.simulate(n_runs=10)
+    assert len(sim._session_results) == 10

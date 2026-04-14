@@ -107,13 +107,49 @@ class UserSimulator:
         self._product: str = ""
         self._screen_id: str | None = None
         self._session_results: list[SessionResult] = []
+        self._agent_pool: list | None = None   # populated by prepare_with_pool()
 
-    def prepare(self, product: str, goal: str, screen_id: str | None = None) -> "UserSimulator":
-        """Extract EvaluationSchema from goal. Call before simulate()."""
-        from mcv.schema_extractor import extract_evaluation_schema
+    def prepare(
+        self,
+        product: str,
+        goal: str | None = None,
+        screen_id: str | None = None,
+        locked_metrics: list[EvaluationMetric] | None = None,
+    ) -> "UserSimulator":
+        """Extract EvaluationSchema from goal, or reuse locked_metrics to skip extraction.
+
+        Pass locked_metrics to lock the schema across PDCA rounds so the same
+        metrics are measured every round, enabling trend tracking.
+        """
         self._product = product
         self._screen_id = screen_id
-        self._metrics = extract_evaluation_schema(goal, self.api_key)
+        if locked_metrics is not None:
+            self._metrics = locked_metrics
+        else:
+            from mcv.schema_extractor import extract_evaluation_schema
+            self._metrics = extract_evaluation_schema(goal or "", self.api_key)
+        return self
+
+    def prepare_with_pool(
+        self,
+        product: str,
+        pool: list,                                          # list[AgentProfile]
+        goal: str | None = None,
+        locked_metrics: list[EvaluationMetric] | None = None,
+    ) -> "UserSimulator":
+        """Like prepare() but uses a pool of AgentProfiles for heterogeneous simulation.
+
+        Each session in simulate() will use a different AgentProfile from the pool.
+        When n_runs > len(pool), cycles through pool in order.
+        """
+        self._product = product
+        self._screen_id = None
+        self._agent_pool = pool
+        if locked_metrics is not None:
+            self._metrics = locked_metrics
+        else:
+            from mcv.schema_extractor import extract_evaluation_schema
+            self._metrics = extract_evaluation_schema(goal or "", self.api_key)
         return self
 
     def simulate(self, n_runs: int = 60) -> "UserSimulator":
@@ -124,10 +160,18 @@ class UserSimulator:
         self._session_results = []
         roles = list(self.domain_config.user_roles.keys())
         for i in range(n_runs):
-            role = roles[i % len(roles)] if roles else None
+            if self._agent_pool:
+                agent = self._agent_pool[i % len(self._agent_pool)]
+                dims = getattr(agent, "_dims", [])
+                user_type_text = agent.to_behavioral_constraints(dims)
+                role = None
+            else:
+                user_type_text = self.user_type
+                role = roles[i % len(roles)] if roles else None
+
             ctx = _random_context_for_domain(role, self.domain_config)
             prompt = _build_session_prompt(
-                user_type=self.user_type,
+                user_type=user_type_text,
                 context=ctx,
                 product=self._product,
                 metrics=self._metrics,

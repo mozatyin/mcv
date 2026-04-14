@@ -270,10 +270,12 @@ class PersonaPool:
                 trait_vector[dim.name] = round(val, 2)
 
             self._counter += 1
-            agents.append(AgentProfile(
+            agent = AgentProfile(
                 agent_id=f"agent_{self._counter:03d}",
                 archetype_name=arch.name,
                 trait_vector=trait_vector,
-            ))
+            )
+            agent._dims = dims  # attach dims for to_behavioral_constraints()
+            agents.append(agent)
 
         return agents
