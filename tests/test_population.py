@@ -105,3 +105,34 @@ def test_pool_ids_unique_across_multiple_generate_calls():
     agents2 = pool.generate(5)
     all_ids = [a.agent_id for a in agents1 + agents2]
     assert len(set(all_ids)) == 10
+
+def test_behavioral_constraints_low_trait():
+    dims = [TraitDimension("patience", "Patience", "quits immediately if confused", "waits indefinitely", "normal", 5.0, 2.0, "space2")]
+    agent = AgentProfile("a1", "Grinder", {"patience": 1.5})
+    text = agent.to_behavioral_constraints(dims)
+    assert "quits immediately if confused" in text
+    assert "1.5" in text
+
+def test_behavioral_constraints_high_trait():
+    dims = [TraitDimension("patience", "Patience", "quits immediately if confused", "waits indefinitely", "normal", 5.0, 2.0, "space2")]
+    agent = AgentProfile("a1", "Socializer", {"patience": 9.2})
+    text = agent.to_behavioral_constraints(dims)
+    assert "waits indefinitely" in text
+
+def test_behavioral_constraints_includes_anti_rationalization():
+    dims = [TraitDimension("ludo_familiarity", "Ludo XP", "never played Ludo", "expert", "normal", 5.0, 2.0, "space2")]
+    agent = AgentProfile("a1", "Arch", {"ludo_familiarity": 1.0})
+    text = agent.to_behavioral_constraints(dims)
+    # Must include the anti-rationalization rules (Chinese or English)
+    assert "放弃" in text or "abandon" in text.lower()
+    assert "礼貌" in text or "polite" in text.lower()
+
+def test_behavioral_constraints_covers_all_traits():
+    dims = [
+        TraitDimension("patience", "Patience", "low patience", "high patience", "normal", 5.0, 2.0, "space2"),
+        TraitDimension("social_motivation", "Social", "solo player", "social-first", "normal", 6.0, 2.0, "space2"),
+    ]
+    agent = AgentProfile("a1", "Arch", {"patience": 7.0, "social_motivation": 3.0})
+    text = agent.to_behavioral_constraints(dims)
+    assert "high patience" in text
+    assert "solo player" in text

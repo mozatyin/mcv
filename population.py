@@ -46,6 +46,44 @@ class AgentProfile:
     archetype_name: str
     trait_vector: dict[str, float]    # {trait_name: value (0-10)}
 
+    def to_behavioral_constraints(self, dimensions: list["TraitDimension"]) -> str:
+        """Convert trait vector to behavioral constraint string for session prompt.
+
+        Includes four mandatory anti-rationalization rules that suppress LLM's
+        natural tendency toward rational, helpful, task-completing behavior.
+        """
+        lines = []
+        for dim in dimensions:
+            val = self.trait_vector.get(dim.name, 5.0)
+            if val <= 3.0:
+                label = dim.low_label
+                intensity = "强烈地"
+            elif val <= 4.5:
+                label = dim.low_label
+                intensity = "有些"
+            elif val >= 7.0:
+                label = dim.high_label
+                intensity = "强烈地"
+            elif val >= 5.5:
+                label = dim.high_label
+                intensity = "有些"
+            else:
+                label = f"在{dim.name}上处于中间状态"
+                intensity = ""
+            lines.append(f"- {intensity}{label}（{dim.name}={val:.1f}/10）")
+
+        # Anti-rationalization rules — always included
+        anti_rules = (
+            "\n【行为约束 — 必须遵守】\n"
+            "- 你只记得这个 app 里 2-3 件事，其余都忘了或从未注意到\n"
+            "- 随时可以放弃操作——放弃是最正常的结果，不需要解释原因\n"
+            "- 不要对产品问题保持礼貌；真实用户会沮丧、困惑、直接离开\n"
+            "- 你不是一个乐于助人的 AI，你是一个有自己目标和耐心极限的真实用户"
+        )
+
+        trait_block = "\n".join(lines) if lines else "（无特质约束）"
+        return f"【你的特质】\n{trait_block}{anti_rules}"
+
 
 class PersonaPool:
     """Samples N AgentProfiles from a confirmed PersonaStructure.
