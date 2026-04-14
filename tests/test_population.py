@@ -285,3 +285,13 @@ def test_simulate_with_pool_cycles_when_n_exceeds_pool():
     with patch("mcv.core._llm_call", return_value=("day1_return: yes", {})):
         sim.simulate(n_runs=10)
     assert len(sim._session_results) == 10
+
+
+def test_population_exports_available_at_mcv_root():
+    import mcv
+    assert hasattr(mcv, "TraitDimension")
+    assert hasattr(mcv, "Archetype")
+    assert hasattr(mcv, "PersonaStructure")
+    assert hasattr(mcv, "AgentProfile")
+    assert hasattr(mcv, "PersonaPool")
+    assert hasattr(mcv, "PopulationResearcher")

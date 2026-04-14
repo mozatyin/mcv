@@ -8,6 +8,10 @@ from mcv.user_simulator import UserSimulator, SessionResult
 from mcv.domain_configs import DomainConfig, GameDomainConfig, AppDomainConfig, WebDomainConfig
 from mcv.schema_extractor import EvaluationMetric, extract_evaluation_schema
 from mcv.report import SimulationReport, MetricResult
+from mcv.population import (
+    TraitDimension, Archetype, PersonaStructure, AgentProfile,
+    PersonaPool, PopulationResearcher,
+)
 
 __all__ = [
     "Persona", "DecisionResult", "PersonaDecider", "load_or_generate",
@@ -18,4 +22,6 @@ __all__ = [
     "DomainConfig", "GameDomainConfig", "AppDomainConfig", "WebDomainConfig",
     "EvaluationMetric", "extract_evaluation_schema",
     "SimulationReport", "MetricResult",
+    "TraitDimension", "Archetype", "PersonaStructure", "AgentProfile",
+    "PersonaPool", "PopulationResearcher",
 ]
