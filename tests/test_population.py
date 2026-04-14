@@ -144,3 +144,94 @@ def test_behavioral_constraints_mid_trait():
     # Mid-range should reference the dimension description, not raw snake_case name
     assert "patience level" in text.lower()
     assert "patience" in text  # dim.name=5.0 still appears in the value part
+
+
+import json
+from unittest.mock import patch
+
+def _mock_researcher_response() -> str:
+    return json.dumps({
+        "population_label": "Arabic Ludo App Users",
+        "product_context": "Ludo mobile app for Arabic families",
+        "trait_dimensions": [
+            {
+                "name": "ludo_familiarity",
+                "description": "Prior Ludo experience",
+                "low_label": "never played Ludo, confused by rules",
+                "high_label": "expert player who knows all strategies",
+                "distribution": "bimodal",
+                "mean": 5.0,
+                "std": 2.5,
+                "source": "space2",
+            },
+            {
+                "name": "social_motivation",
+                "description": "Motivation to play with others vs solo",
+                "low_label": "prefers solo play, ignores social features",
+                "high_label": "only plays with friends and family",
+                "distribution": "right_skewed",
+                "mean": 7.0,
+                "std": 2.0,
+                "source": "space3",
+            },
+        ],
+        "archetypes": [
+            {
+                "name": "Family Socializer",
+                "frequency": 0.50,
+                "description": "Plays with family, social-first motivation",
+                "trait_constraints": {"social_motivation": [6.0, 10.0], "ludo_familiarity": [2.0, 9.0]},
+            },
+            {
+                "name": "Competitive Grinder",
+                "frequency": 0.30,
+                "description": "Plays to win, high familiarity",
+                "trait_constraints": {"social_motivation": [2.0, 6.0], "ludo_familiarity": [6.0, 10.0]},
+            },
+            {
+                "name": "Casual Dabbler",
+                "frequency": 0.20,
+                "description": "First-time user, low commitment",
+                "trait_constraints": {"social_motivation": [3.0, 7.0], "ludo_familiarity": [0.0, 4.0]},
+            },
+        ],
+        "research_notes": "Ludo is dominant in Arabic family gaming.",
+    })
+
+def test_researcher_returns_persona_structure():
+    from mcv.population import PopulationResearcher
+    with patch("mcv.core._llm_call", return_value=(_mock_researcher_response(), {})):
+        researcher = PopulationResearcher(api_key="test")
+        result = researcher.research("A Ludo mobile app for Arabic families")
+    assert isinstance(result, PersonaStructure)
+    assert result.population_label == "Arabic Ludo App Users"
+    assert len(result.trait_dimensions) == 2
+    assert len(result.archetypes) == 3
+
+def test_researcher_trait_dimensions_parsed():
+    from mcv.population import PopulationResearcher
+    with patch("mcv.core._llm_call", return_value=(_mock_researcher_response(), {})):
+        researcher = PopulationResearcher(api_key="test")
+        result = researcher.research("A Ludo app")
+    dim = result.trait_dimensions[0]
+    assert dim.name == "ludo_familiarity"
+    assert dim.distribution == "bimodal"
+    assert dim.source == "space2"
+
+def test_researcher_archetypes_parsed():
+    from mcv.population import PopulationResearcher
+    with patch("mcv.core._llm_call", return_value=(_mock_researcher_response(), {})):
+        researcher = PopulationResearcher(api_key="test")
+        result = researcher.research("A Ludo app")
+    arch = result.archetypes[0]
+    assert arch.name == "Family Socializer"
+    assert arch.frequency == 0.50
+    assert arch.trait_constraints["social_motivation"] == (6.0, 10.0)
+
+def test_researcher_frequencies_sum_to_1():
+    from mcv.population import PopulationResearcher
+    with patch("mcv.core._llm_call", return_value=(_mock_researcher_response(), {})):
+        researcher = PopulationResearcher(api_key="test")
+        result = researcher.research("A Ludo app")
+    total = sum(a.frequency for a in result.archetypes)
+    assert abs(total - 1.0) < 0.01

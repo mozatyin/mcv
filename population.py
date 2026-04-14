@@ -4,6 +4,8 @@ Three spaces merged into PersonaStructure → PersonaPool → AgentProfile per s
 """
 from __future__ import annotations
 import random
+import json
+import re
 from dataclasses import dataclass
 
 
@@ -83,6 +85,158 @@ class AgentProfile:
 
         trait_block = "\n".join(lines) if lines else "（无特质约束）"
         return f"【你的特质】\n{trait_block}{anti_rules}"
+
+
+_RESEARCH_PROMPT = """You are a behavioral researcher and product designer.
+
+A product manager wants to simulate realistic users for their product:
+"{product_description}"
+
+Research and define the complete behavioral population for this product by combining:
+- Space 1 (Product Intent): what the product does and who it targets
+- Space 2 (Behavioral Research): what psychology and UX research says about this user type
+- Space 3 (Market Context): cultural, competitive, and demographic context
+
+Output ONLY valid JSON (no markdown):
+{{
+  "population_label": "short label for this user population",
+  "product_context": "one sentence describing the product",
+  "trait_dimensions": [
+    {{
+      "name": "snake_case_name",
+      "description": "what this dimension measures",
+      "low_label": "specific behavior when this trait is very low (0-3)",
+      "high_label": "specific behavior when this trait is very high (7-10)",
+      "distribution": "normal|uniform|bimodal|right_skewed|left_skewed",
+      "mean": 5.0,
+      "std": 2.0,
+      "source": "space1|space2|space3"
+    }}
+  ],
+  "archetypes": [
+    {{
+      "name": "Archetype Name",
+      "frequency": 0.40,
+      "description": "who they are and why they use this product",
+      "trait_constraints": {{"trait_name": [min_val, max_val]}}
+    }}
+  ],
+  "research_notes": "key insight about this user population"
+}}
+
+Rules:
+- 4-8 trait_dimensions that actually predict different behaviors in this product
+- 3-5 archetypes covering the full spectrum from most enthusiastic to least
+- archetype frequencies must sum to 1.0
+- trait_constraints only include dimensions that differentiate this archetype
+- low_label and high_label must be specific behaviors, not just adjectives
+- cover cultural/regional context in the dimensions if relevant"""
+
+
+class PopulationResearcher:
+    """Runs 3-space research to produce a PersonaStructure for human confirmation.
+
+    One Sonnet call synthesizes product intent, behavioral research, and market context.
+    """
+
+    def __init__(self, api_key: str):
+        self._api_key = api_key
+
+    def research(self, product_description: str) -> PersonaStructure:
+        """Research user population for a product description.
+
+        Returns a PersonaStructure ready for human confirmation.
+        """
+        import mcv.core as _core
+        prompt = _RESEARCH_PROMPT.format(product_description=product_description[:2000])
+        raw, _ = _core._llm_call(prompt, self._api_key, max_tokens=2048)
+        return self._parse(raw, product_description)
+
+    def _parse(self, raw: str, product_description: str) -> PersonaStructure:
+        """Parse LLM response into PersonaStructure. Returns minimal fallback on failure."""
+        text = re.sub(r'^```(?:json)?\s*', '', raw.strip())
+        text = re.sub(r'\s*```$', '', text.strip())
+        m = re.search(r'\{.*\}', text, re.DOTALL)
+        if not m:
+            return self._fallback(product_description)
+        try:
+            data = json.loads(m.group())
+        except (json.JSONDecodeError, ValueError):
+            return self._fallback(product_description)
+
+        dims = []
+        for d in data.get("trait_dimensions", []):
+            if not isinstance(d, dict) or not d.get("name"):
+                continue
+            dims.append(TraitDimension(
+                name=d["name"],
+                description=d.get("description", ""),
+                low_label=d.get("low_label", "low"),
+                high_label=d.get("high_label", "high"),
+                distribution=d.get("distribution", "normal"),
+                mean=float(d.get("mean", 5.0)),
+                std=float(d.get("std", 2.0)),
+                source=d.get("source", "space2"),
+            ))
+
+        archs = []
+        for a in data.get("archetypes", []):
+            if not isinstance(a, dict) or not a.get("name"):
+                continue
+            raw_constraints = a.get("trait_constraints", {})
+            constraints = {
+                k: (float(v[0]), float(v[1]))
+                for k, v in raw_constraints.items()
+                if isinstance(v, (list, tuple)) and len(v) == 2
+            }
+            archs.append(Archetype(
+                name=a["name"],
+                frequency=float(a.get("frequency", 1.0 / max(len(data.get("archetypes", [1])), 1))),
+                description=a.get("description", ""),
+                trait_constraints=constraints,
+            ))
+
+        # Normalise frequencies to sum to 1.0
+        if archs:
+            total = sum(a.frequency for a in archs)
+            if total > 0:
+                archs = [
+                    Archetype(a.name, a.frequency / total, a.description, a.trait_constraints)
+                    for a in archs
+                ]
+
+        if not dims or not archs:
+            return self._fallback(product_description)
+
+        return PersonaStructure(
+            population_label=data.get("population_label", "App Users"),
+            product_context=data.get("product_context", product_description[:100]),
+            trait_dimensions=dims,
+            archetypes=archs,
+            research_notes=data.get("research_notes", ""),
+        )
+
+    def _fallback(self, product_description: str) -> PersonaStructure:
+        """Minimal 2-archetype structure when LLM parsing fails."""
+        dims = [
+            TraitDimension(
+                "engagement_drive", "Motivation to engage deeply",
+                "passive, easily disengaged, skips most features",
+                "highly motivated, explores all features eagerly",
+                "normal", 5.0, 2.5, "space1",
+            ),
+        ]
+        archs = [
+            Archetype("Engaged User", 0.60, "actively uses the product", {"engagement_drive": (5.0, 10.0)}),
+            Archetype("Passive User", 0.40, "minimal engagement",        {"engagement_drive": (0.0, 5.0)}),
+        ]
+        return PersonaStructure(
+            population_label="App Users",
+            product_context=product_description[:100],
+            trait_dimensions=dims,
+            archetypes=archs,
+            research_notes="fallback — LLM parsing failed",
+        )
 
 
 class PersonaPool:
