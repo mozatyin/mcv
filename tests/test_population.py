@@ -1,4 +1,6 @@
-from mcv.population import TraitDimension, Archetype, PersonaStructure, AgentProfile, PersonaPool
+import json
+from unittest.mock import patch
+from mcv.population import TraitDimension, Archetype, PersonaStructure, AgentProfile, PersonaPool, PopulationResearcher
 
 def test_trait_dimension_fields():
     td = TraitDimension(
@@ -146,9 +148,6 @@ def test_behavioral_constraints_mid_trait():
     assert "patience" in text  # dim.name=5.0 still appears in the value part
 
 
-import json
-from unittest.mock import patch
-
 def _mock_researcher_response() -> str:
     return json.dumps({
         "population_label": "Arabic Ludo App Users",
@@ -199,7 +198,6 @@ def _mock_researcher_response() -> str:
     })
 
 def test_researcher_returns_persona_structure():
-    from mcv.population import PopulationResearcher
     with patch("mcv.core._llm_call", return_value=(_mock_researcher_response(), {})):
         researcher = PopulationResearcher(api_key="test")
         result = researcher.research("A Ludo mobile app for Arabic families")
@@ -209,7 +207,6 @@ def test_researcher_returns_persona_structure():
     assert len(result.archetypes) == 3
 
 def test_researcher_trait_dimensions_parsed():
-    from mcv.population import PopulationResearcher
     with patch("mcv.core._llm_call", return_value=(_mock_researcher_response(), {})):
         researcher = PopulationResearcher(api_key="test")
         result = researcher.research("A Ludo app")
@@ -219,7 +216,6 @@ def test_researcher_trait_dimensions_parsed():
     assert dim.source == "space2"
 
 def test_researcher_archetypes_parsed():
-    from mcv.population import PopulationResearcher
     with patch("mcv.core._llm_call", return_value=(_mock_researcher_response(), {})):
         researcher = PopulationResearcher(api_key="test")
         result = researcher.research("A Ludo app")
@@ -229,9 +225,16 @@ def test_researcher_archetypes_parsed():
     assert arch.trait_constraints["social_motivation"] == (6.0, 10.0)
 
 def test_researcher_frequencies_sum_to_1():
-    from mcv.population import PopulationResearcher
     with patch("mcv.core._llm_call", return_value=(_mock_researcher_response(), {})):
         researcher = PopulationResearcher(api_key="test")
         result = researcher.research("A Ludo app")
     total = sum(a.frequency for a in result.archetypes)
     assert abs(total - 1.0) < 0.01
+
+def test_researcher_fallback_on_invalid_json():
+    with patch("mcv.core._llm_call", return_value=("not valid json at all", {})):
+        researcher = PopulationResearcher(api_key="test")
+        result = researcher.research("some product")
+    assert isinstance(result, PersonaStructure)
+    assert result.research_notes == "fallback — LLM parsing failed"
+    assert len(result.archetypes) == 2

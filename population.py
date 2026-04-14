@@ -4,9 +4,8 @@ Three spaces merged into PersonaStructure → PersonaPool → AgentProfile per s
 """
 from __future__ import annotations
 import random
-import json
-import re
 from dataclasses import dataclass
+import mcv.core as _core
 
 
 @dataclass
@@ -147,21 +146,14 @@ class PopulationResearcher:
 
         Returns a PersonaStructure ready for human confirmation.
         """
-        import mcv.core as _core
         prompt = _RESEARCH_PROMPT.format(product_description=product_description[:2000])
         raw, _ = _core._llm_call(prompt, self._api_key, max_tokens=2048)
         return self._parse(raw, product_description)
 
     def _parse(self, raw: str, product_description: str) -> PersonaStructure:
         """Parse LLM response into PersonaStructure. Returns minimal fallback on failure."""
-        text = re.sub(r'^```(?:json)?\s*', '', raw.strip())
-        text = re.sub(r'\s*```$', '', text.strip())
-        m = re.search(r'\{.*\}', text, re.DOTALL)
-        if not m:
-            return self._fallback(product_description)
-        try:
-            data = json.loads(m.group())
-        except (json.JSONDecodeError, ValueError):
+        data = _core._safe_json(raw)
+        if not data:
             return self._fallback(product_description)
 
         dims = []
