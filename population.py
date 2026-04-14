@@ -28,6 +28,7 @@ class Archetype:
     frequency: float                                       # 0-1, must sum to 1.0 across all archetypes
     description: str
     trait_constraints: dict[str, tuple[float, float]]     # trait_name → (min_val, max_val)
+    background_story: str = ""                            # human story injected into simulation prompt
 
 
 @dataclass
@@ -47,44 +48,22 @@ class AgentProfile:
     archetype_name: str
     trait_vector: dict[str, float]    # {trait_name: value (0-10)}
     dims: list = field(default_factory=list, repr=False, compare=False)  # TraitDimension list from pool
+    background_story: str = ""        # human story injected into simulation prompt
 
-    def to_behavioral_constraints(self, dimensions: list["TraitDimension"]) -> str:
-        """Convert trait vector to behavioral constraint string for session prompt.
+    def to_human_story(self) -> str:
+        """Return the human background story for prompt injection.
 
-        Includes four mandatory anti-rationalization rules that suppress LLM's
-        natural tendency toward rational, helpful, task-completing behavior.
+        A real person description (age, city, job, apps they use, how they found
+        this product) that the LLM can embody — not a ruleset to execute.
+
+        The LLM infers behavioral tendencies from this context naturally,
+        rather than being told what to do via trait labels or constraint rules.
+
+        Falls back to archetype name when no story is available.
         """
-        lines = []
-        for dim in dimensions:
-            val = self.trait_vector.get(dim.name, 5.0)
-            if val <= 3.0:
-                label = dim.low_label
-                intensity = "强烈地"
-            elif val <= 4.5:
-                label = dim.low_label
-                intensity = "有些"
-            elif val >= 7.0:
-                label = dim.high_label
-                intensity = "强烈地"
-            elif val >= 5.5:
-                label = dim.high_label
-                intensity = "有些"
-            else:
-                label = f"neutral on {dim.description.lower()}"
-                intensity = ""
-            lines.append(f"- {intensity}{label}（{dim.name}={val:.1f}/10）")
-
-        # Anti-rationalization rules — always included
-        anti_rules = (
-            "\n【行为约束 — 必须遵守】\n"
-            "- 你只记得这个 app 里 2-3 件事，其余都忘了或从未注意到\n"
-            "- 随时可以放弃操作——放弃是最正常的结果，不需要解释原因\n"
-            "- 不要对产品问题保持礼貌；真实用户会沮丧、困惑、直接离开\n"
-            "- 你不是一个乐于助人的 AI，你是一个有自己目标和耐心极限的真实用户"
-        )
-
-        trait_block = "\n".join(lines) if lines else "（无特质约束）"
-        return f"【你的特质】\n{trait_block}{anti_rules}"
+        if self.background_story:
+            return self.background_story
+        return f"一个{self.archetype_name}类型的普通用户。"
 
 
 _RESEARCH_PROMPT = """You are a behavioral researcher and product designer.
@@ -117,7 +96,8 @@ Output ONLY valid JSON (no markdown):
     {{
       "name": "Archetype Name",
       "frequency": 0.40,
-      "description": "who they are and why they use this product",
+      "description": "one-line summary of who they are",
+      "background_story": "具体人物：年龄、城市/国家、职业、手机上已有哪些同类产品、每天什么时候用手机、怎么发现这个产品、一个自然的生活张力（想要什么 vs 有什么限制）。≤60字。只写这个人是谁，不写行为预测。",
       "trait_constraints": {{"trait_name": [min_val, max_val]}}
     }}
   ],
@@ -130,7 +110,8 @@ Rules:
 - archetype frequencies must sum to 1.0
 - trait_constraints only include dimensions that differentiate this archetype
 - low_label and high_label must be specific behaviors, not just adjectives
-- cover cultural/regional context in the dimensions if relevant"""
+- cover cultural/regional context in the dimensions if relevant
+- background_story: write a REAL PERSON (age, location, job, existing apps, daily routine, discovery channel). Do NOT write behavioral predictions or rules. The story should make someone's natural patience/engagement level obvious from context, not stated explicitly."""
 
 
 class PopulationResearcher:
@@ -187,6 +168,7 @@ class PopulationResearcher:
                 frequency=float(a.get("frequency", 1.0 / max(len(data.get("archetypes", [1])), 1))),
                 description=a.get("description", ""),
                 trait_constraints=constraints,
+                background_story=a.get("background_story", ""),
             ))
 
         # Normalise frequencies to sum to 1.0
@@ -194,7 +176,7 @@ class PopulationResearcher:
             total = sum(a.frequency for a in archs)
             if total > 0:
                 archs = [
-                    Archetype(a.name, a.frequency / total, a.description, a.trait_constraints)
+                    Archetype(a.name, a.frequency / total, a.description, a.trait_constraints, a.background_story)
                     for a in archs
                 ]
 
@@ -276,6 +258,7 @@ class PersonaPool:
                 archetype_name=arch.name,
                 trait_vector=trait_vector,
                 dims=dims,
+                background_story=arch.background_story,
             )
             agents.append(agent)
 

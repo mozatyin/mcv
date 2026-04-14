@@ -108,44 +108,42 @@ def test_pool_ids_unique_across_multiple_generate_calls():
     all_ids = [a.agent_id for a in agents1 + agents2]
     assert len(set(all_ids)) == 10
 
-def test_behavioral_constraints_low_trait():
-    dims = [TraitDimension("patience", "Patience", "quits immediately if confused", "waits indefinitely", "normal", 5.0, 2.0, "space2")]
-    agent = AgentProfile("a1", "Grinder", {"patience": 1.5})
-    text = agent.to_behavioral_constraints(dims)
-    assert "quits immediately if confused" in text
-    assert "1.5" in text
+def test_human_story_returns_background_story():
+    """to_human_story() returns the background_story when set."""
+    story = "28岁，印度孟买，IT职员。通勤地铁时玩手机游戏打发时间。"
+    agent = AgentProfile("a1", "Curious", {"patience": 6.0}, background_story=story)
+    assert agent.to_human_story() == story
 
-def test_behavioral_constraints_high_trait():
-    dims = [TraitDimension("patience", "Patience", "quits immediately if confused", "waits indefinitely", "normal", 5.0, 2.0, "space2")]
-    agent = AgentProfile("a1", "Socializer", {"patience": 9.2})
-    text = agent.to_behavioral_constraints(dims)
-    assert "waits indefinitely" in text
+def test_human_story_fallback_when_no_story():
+    """to_human_story() falls back to archetype name when no story is set."""
+    agent = AgentProfile("a1", "Family Socializer", {"patience": 6.0})
+    text = agent.to_human_story()
+    assert "Family Socializer" in text
 
-def test_behavioral_constraints_includes_anti_rationalization():
-    dims = [TraitDimension("ludo_familiarity", "Ludo XP", "never played Ludo", "expert", "normal", 5.0, 2.0, "space2")]
-    agent = AgentProfile("a1", "Arch", {"ludo_familiarity": 1.0})
-    text = agent.to_behavioral_constraints(dims)
-    # Must include the anti-rationalization rules (Chinese or English)
-    assert "放弃" in text or "abandon" in text.lower()
-    assert "礼貌" in text or "polite" in text.lower()
+def test_archetype_background_story_field():
+    """Archetype accepts background_story and defaults to empty string."""
+    arch = Archetype("Casual Dabbler", 0.30, "low commitment user",
+                     {"patience": (0.0, 5.0)},
+                     background_story="35岁，泰国曼谷，家庭主妇。随手下载，不花钱在游戏上。")
+    assert "泰国" in arch.background_story
+    # Default is empty string
+    arch2 = Archetype("Test", 0.70, "desc", {})
+    assert arch2.background_story == ""
 
-def test_behavioral_constraints_covers_all_traits():
-    dims = [
-        TraitDimension("patience", "Patience", "low patience", "high patience", "normal", 5.0, 2.0, "space2"),
-        TraitDimension("social_motivation", "Social", "solo player", "social-first", "normal", 6.0, 2.0, "space2"),
+def test_persona_pool_propagates_background_story():
+    """Agents from PersonaPool carry their archetype's background_story."""
+    dims = [TraitDimension("patience", "Patience", "quits fast", "very patient", "normal", 5.0, 2.0, "space2")]
+    story = "22岁，菲律宾马尼拉，快餐店员。下班后玩手机竞技游戏。"
+    archs = [
+        Archetype("Competitor", 1.0, "competitive user", {"patience": (4.0, 9.0)},
+                  background_story=story),
     ]
-    agent = AgentProfile("a1", "Arch", {"patience": 7.0, "social_motivation": 3.0})
-    text = agent.to_behavioral_constraints(dims)
-    assert "high patience" in text
-    assert "solo player" in text
-
-def test_behavioral_constraints_mid_trait():
-    dims = [TraitDimension("patience", "Patience level", "quits fast", "very patient", "normal", 5.0, 2.0, "space2")]
-    agent = AgentProfile("a1", "Arch", {"patience": 5.0})
-    text = agent.to_behavioral_constraints(dims)
-    # Mid-range should reference the dimension description, not raw snake_case name
-    assert "patience level" in text.lower()
-    assert "patience" in text  # dim.name=5.0 still appears in the value part
+    structure = PersonaStructure("Test", "test app", dims, archs)
+    pool = PersonaPool(structure)
+    agents = pool.generate(5)
+    for agent in agents:
+        assert agent.background_story == story
+        assert agent.to_human_story() == story
 
 
 def _mock_researcher_response() -> str:
@@ -179,18 +177,21 @@ def _mock_researcher_response() -> str:
                 "name": "Family Socializer",
                 "frequency": 0.50,
                 "description": "Plays with family, social-first motivation",
+                "background_story": "32岁，利雅得，政府职员，三个孩子。和兄弟们周五晚上打纸牌是家庭传统。想在手机上继续这个传统。",
                 "trait_constraints": {"social_motivation": [6.0, 10.0], "ludo_familiarity": [2.0, 9.0]},
             },
             {
                 "name": "Competitive Grinder",
                 "frequency": 0.30,
                 "description": "Plays to win, high familiarity",
+                "background_story": "22岁，开罗，大学生。手机上有FIFA Mobile和Clash Royale，习惯和人比赛，赢了会截图发群。",
                 "trait_constraints": {"social_motivation": [2.0, 6.0], "ludo_familiarity": [6.0, 10.0]},
             },
             {
                 "name": "Casual Dabbler",
                 "frequency": 0.20,
                 "description": "First-time user, low commitment",
+                "background_story": "40岁，迪拜，家庭主妇。Facebook广告看到随手下载，主要玩消消乐，从不花钱在游戏上。",
                 "trait_constraints": {"social_motivation": [3.0, 7.0], "ludo_familiarity": [0.0, 4.0]},
             },
         ],
@@ -223,6 +224,7 @@ def test_researcher_archetypes_parsed():
     assert arch.name == "Family Socializer"
     assert arch.frequency == 0.50
     assert arch.trait_constraints["social_motivation"] == (6.0, 10.0)
+    assert "利雅得" in arch.background_story  # human story preserved
 
 def test_researcher_frequencies_sum_to_1():
     with patch("mcv.core._llm_call", return_value=(_mock_researcher_response(), {})):
@@ -251,26 +253,39 @@ def test_prepare_with_pool_sets_pool():
     assert sim._agent_pool == agents
     assert sim._metrics == metrics
 
-def test_simulate_with_pool_uses_behavioral_constraints():
-    """Each session prompt should contain anti-rationalization text from AgentProfile."""
+def test_simulate_with_pool_uses_human_story():
+    """Each session prompt should contain the agent's background story."""
     from mcv.user_simulator import UserSimulator
     from mcv.domain_configs import AppDomainConfig
     from mcv.schema_extractor import EvaluationMetric
-    from unittest.mock import patch
+    from unittest.mock import patch, MagicMock
+
+    # Build structure with real background stories
+    dims = [TraitDimension("patience", "Patience", "quits fast", "very patient", "normal", 5.0, 2.0, "space2")]
+    archs = [
+        Archetype("Competitor", 1.0, "competitive", {"patience": (5.0, 10.0)},
+                  background_story="22岁，马尼拉，快餐店员，赢了会截图发群。"),
+    ]
+    structure = PersonaStructure("Test", "test app", dims, archs)
+    agents = PersonaPool(structure).generate(3)
+
     sim = UserSimulator("test user", AppDomainConfig, api_key="test")
-    agents = PersonaPool(_make_structure()).generate(6)
     metrics = [EvaluationMetric("day1_return", "bool", "会回来吗？")]
     sim.prepare_with_pool(product="test product", pool=agents, locked_metrics=metrics)
+
     captured_prompts = []
     def fake_llm(prompt, api_key, **kwargs):
         captured_prompts.append(prompt)
         return "day1_return: yes", {}
+
     with patch("mcv.core._llm_call", side_effect=fake_llm):
-        sim.simulate(n_runs=6)
-    assert len(captured_prompts) == 6
-    # All prompts should contain anti-rationalization text
+        sim.simulate(n_runs=3)
+
+    assert len(captured_prompts) == 3
+    # Every prompt must contain the human story, not trait labels
     for p in captured_prompts:
-        assert "放弃" in p or "abandon" in p.lower()
+        assert "马尼拉" in p  # human story injected
+        assert "social_motivation" not in p  # no raw trait names
 
 def test_simulate_with_pool_cycles_when_n_exceeds_pool():
     """If n_runs > len(pool), cycles through pool."""
