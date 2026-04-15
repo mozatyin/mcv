@@ -1,4 +1,5 @@
 
+from unittest.mock import patch as _patch
 
 from mcv.report import (
     _aggregate_bool, _aggregate_scale, _aggregate_text,
@@ -112,3 +113,36 @@ def test_aggregate_scale_single_value_ci():
     assert r.stdev == 0.0
     assert r.ci_95_low == 3.0
     assert r.ci_95_high == 3.0
+
+
+def test_aggregate_auto_key_findings():
+    metrics = [
+        EvaluationMetric("ret", "bool", "回来吗？"),
+        EvaluationMetric("eng", "scale_1_5", "投入度？"),
+    ]
+    sessions = [
+        SessionResult(CTX, "叙述", {"ret": "yes", "eng": "4"}),
+        SessionResult(CTX, "叙述", {"ret": "no",  "eng": "3"}),
+        SessionResult(CTX, "叙述", {"ret": "yes", "eng": "5"}),
+    ]
+    with _patch("mcv.core._llm_call") as mock_llm:
+        mock_llm.return_value = ("Day-1 留存率为 67%，参与度均分 4.0。", 80)
+        report = aggregate(sessions, metrics, "玩家", "游戏", api_key="test")
+    assert len(report.key_findings) > 10
+
+
+def test_aggregate_no_key_findings_without_api_key():
+    metrics = [EvaluationMetric("ret", "bool", "?"), EvaluationMetric("eng", "scale_1_5", "?")]
+    sessions = [SessionResult(CTX, "叙述", {"ret": "yes", "eng": "4"})]
+    report = aggregate(sessions, metrics, "玩家", "游戏", api_key=None)
+    assert report.key_findings == ""
+
+
+def test_aggregate_no_key_findings_with_single_metric():
+    metrics = [EvaluationMetric("ret", "bool", "?")]
+    sessions = [SessionResult(CTX, "叙述", {"ret": "yes"})]
+    with _patch("mcv.core._llm_call") as mock_llm:
+        mock_llm.return_value = ("some findings", 50)
+        report = aggregate(sessions, metrics, "玩家", "游戏", api_key="test")
+    # Single metric → no key_findings LLM call
+    assert report.key_findings == ""

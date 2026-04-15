@@ -109,6 +109,41 @@ def _aggregate_text(values: list[str], api_key: str | None = None) -> MetricResu
     return MetricResult(name="", type="text", themes=themes, samples=samples)
 
 
+def _generate_key_findings(
+    metrics: dict[str, MetricResult],
+    user_type: str,
+    api_key: str,
+) -> str:
+    """Generate 2-3 sentence product insight from aggregated metrics. One Haiku call."""
+    import mcv.core as _core
+    lines = []
+    for mr in metrics.values():
+        if mr.type == "bool" and mr.true_rate is not None:
+            lines.append(
+                f"{mr.name}: true_rate={mr.true_rate:.0%} "
+                f"(n={mr.n_samples}, CI [{mr.ci_95_low:.0%}–{mr.ci_95_high:.0%}])"
+            )
+        elif mr.type == "scale_1_5" and mr.mean is not None:
+            lines.append(
+                f"{mr.name}: mean={mr.mean:.1f}/5 (stdev={mr.stdev:.2f}, n={mr.n_samples})"
+            )
+        elif mr.type == "text" and mr.themes:
+            lines.append(f"{mr.name} themes: {', '.join(mr.themes[:3])}")
+    if not lines:
+        return ""
+    summary = "\n".join(lines)
+    prompt = (
+        f"用户类型：{user_type}\n"
+        f"模拟指标结果：\n{summary}\n\n"
+        "用 2-3 句话总结最重要的产品发现。直接写洞察，不要重复数字。"
+    )
+    raw, _ = _core._llm_call(
+        prompt, api_key, max_tokens=200,
+        model=_core._haiku_model(api_key),
+    )
+    return raw.strip()
+
+
 def aggregate(
     session_results: list[SessionResult],
     metrics: list[EvaluationMetric],
@@ -134,9 +169,17 @@ def aggregate(
         r.name = metric.name
         results[metric.name] = r
 
+    key_findings = ""
+    if api_key and len(results) >= 2:
+        try:
+            key_findings = _generate_key_findings(results, user_type, api_key)
+        except Exception:
+            pass  # key_findings is optional — never block the report
+
     return SimulationReport(
         n_simulations=len(session_results),
         user_type=user_type,
         product_summary=product_summary,
         metrics=results,
+        key_findings=key_findings,
     )
