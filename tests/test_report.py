@@ -82,3 +82,34 @@ def test_aggregate_text_skips_llm_with_fewer_than_3_values():
     r = _aggregate_text(["只有一条"], api_key="test")
     assert r.themes == []
     assert r.samples == ["只有一条"]
+
+
+def test_aggregate_bool_populates_ci():
+    r = _aggregate_bool(["yes"] * 18 + ["no"] * 12)  # 30 samples, true_rate=0.6
+    assert r.n_samples == 30
+    assert r.stdev is not None
+    assert r.ci_95_low is not None and r.ci_95_high is not None
+    assert r.ci_95_low < r.true_rate < r.ci_95_high
+
+
+def test_aggregate_bool_ci_empty():
+    r = _aggregate_bool([])
+    assert r.n_samples == 0
+    assert r.ci_95_low == 0.0
+    assert r.ci_95_high == 0.0
+
+
+def test_aggregate_scale_populates_ci():
+    r = _aggregate_scale(["4", "3", "5", "4", "4", "3"])
+    assert r.n_samples == 6
+    assert r.stdev is not None and r.stdev > 0
+    assert r.ci_95_low is not None and r.ci_95_high is not None
+    assert r.ci_95_low < r.mean < r.ci_95_high
+
+
+def test_aggregate_scale_single_value_ci():
+    r = _aggregate_scale(["3"])
+    assert r.n_samples == 1
+    assert r.stdev == 0.0
+    assert r.ci_95_low == 3.0
+    assert r.ci_95_high == 3.0
