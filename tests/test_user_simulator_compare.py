@@ -32,7 +32,7 @@ def test_compare_runs_both_variants_same_n():
 
 
 def test_compare_uses_shared_scenario_seeds():
-    """Both variants receive prompts — v1 prompts contain prd_v1, v2 contain prd_v2."""
+    """Both variants must receive the same scenario context fields for each run index."""
     sim = UserSimulator("玩家", GameDomainConfig, api_key="test")
     seen_prompts = []
 
@@ -45,11 +45,18 @@ def test_compare_uses_shared_scenario_seeds():
             mock_schema.return_value = METRICS
             sim.compare("prd_v1", "prd_v2", n_runs=4)
 
-    session_prompts = [p for p in seen_prompts if "叙述" not in p]  # exclude any LLM summaries
+    # First 4 prompts are v1 sessions, next 4 are v2 sessions
+    # (key_diff may add one more call at the end — we only care about the first 8)
     v1_prompts = [p for p in seen_prompts if "prd_v1" in p]
     v2_prompts = [p for p in seen_prompts if "prd_v2" in p]
     assert len(v1_prompts) == 4
     assert len(v2_prompts) == 4
+
+    # Verify same context fields: strip product text, context lines must match
+    for p_a, p_b in zip(v1_prompts, v2_prompts):
+        ctx_a = p_a.replace("prd_v1", "")
+        ctx_b = p_b.replace("prd_v2", "")
+        assert ctx_a == ctx_b, "scenario context must be identical for paired variant sessions"
 
 
 def test_compare_labels_preserved():
