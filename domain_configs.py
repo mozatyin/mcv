@@ -5,11 +5,11 @@ from dataclasses import dataclass
 
 @dataclass
 class DomainConfig:
-    session_framing: str
+    session_framing: str               # "你开始了一局游戏" / "你打开了 app" / "你在刷新闻"
     emotional_states: list[str]
     triggers: list[str]
     time_options: list[str]
-    user_roles: dict[str, list[int]]
+    user_roles: dict[str, list[int]]   # role_name → [usage_day values] (discrete pick-list)
 
 
 GameDomainConfig = DomainConfig(

@@ -30,7 +30,7 @@ class DecisionResult:
 
 def _model_name(api_key: str) -> str:
     """Pick model. OpenRouter keys use openrouter base URL."""
-    return "claude-sonnet-4-6"
+    return "claude-sonnet-4-20250514"
 
 
 def _haiku_model(api_key: str) -> str:
@@ -56,7 +56,7 @@ def _llm_call(
     if temperature > 0.0:
         kwargs["temperature"] = temperature
     if api_key.startswith("sk-or-"):
-        client = anthropic.Anthropic(api_key=api_key, base_url="https://openrouter.ai/api/v1")
+        client = anthropic.Anthropic(api_key=api_key, base_url="https://openrouter.ai/api")
     else:
         client = anthropic.Anthropic(api_key=api_key)
     resp = client.messages.create(**kwargs)

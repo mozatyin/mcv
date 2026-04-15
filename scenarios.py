@@ -3,6 +3,10 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mcv.domain_configs import DomainConfig
 
 
 @dataclass
@@ -60,7 +64,7 @@ def random_context(role: str | None = None) -> ScenarioContext:
 
 def random_context_for_domain(
     role: str | None = None,
-    domain_config=None,
+    domain_config: "DomainConfig | None" = None,
 ) -> ScenarioContext:
     """Generate scenario context using DomainConfig options.
 

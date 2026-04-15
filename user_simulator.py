@@ -59,14 +59,20 @@ def _build_session_prompt(
 
 
 def _parse_session_output(raw: str, metrics: list[EvaluationMetric]) -> dict[str, str]:
-    """Extract metric values from raw session output."""
+    """Extract metric values from raw session output.
+
+    Strips leading markdown formatting (*, #, >) before matching so that LLM
+    output like '**metric_name:** value' is handled correctly.
+    """
     values: dict[str, str] = {}
     for metric in metrics:
         pattern = rf"^{re.escape(metric.name)}\s*[:：]\s*(.+)$"
         for line in raw.splitlines():
-            m = re.match(pattern, line.strip(), re.IGNORECASE)
+            clean = re.sub(r'^[*#>\s]+', '', line.strip())
+            m = re.match(pattern, clean, re.IGNORECASE)
             if m:
-                values[metric.name] = m.group(1).strip()
+                value = re.sub(r'\*+$', '', m.group(1).strip()).strip()
+                values[metric.name] = value
                 break
     return values
 

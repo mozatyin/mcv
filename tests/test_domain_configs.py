@@ -15,13 +15,18 @@ def test_game_domain_config_fields():
 
 
 def test_app_domain_config_fields():
+    assert AppDomainConfig.session_framing == "你打开了这个 app"
     assert "stressed" in AppDomainConfig.emotional_states
+    assert "work_stress" in AppDomainConfig.triggers
+    assert "evening_wind_down" in AppDomainConfig.time_options
     assert "Explorer" in AppDomainConfig.user_roles
 
 
 def test_web_domain_config_fields():
     assert WebDomainConfig.session_framing == "你在刷新闻"
     assert "curious" in WebDomainConfig.emotional_states
+    assert "breaking_news" in WebDomainConfig.triggers
+    assert "PowerReader" in WebDomainConfig.user_roles
 
 
 def test_custom_domain_config():
@@ -42,6 +47,19 @@ def test_random_context_for_domain_uses_config_options():
     assert ctx.emotional_state in GameDomainConfig.emotional_states
     assert ctx.trigger in GameDomainConfig.triggers
     assert ctx.usage_day in GameDomainConfig.user_roles["Newcomer"]
+
+
+def test_random_context_for_domain_fallback_when_no_config():
+    from mcv.scenarios import ScenarioContext
+    ctx = random_context_for_domain(role=None, domain_config=None)
+    assert isinstance(ctx, ScenarioContext)
+
+
+def test_random_context_for_domain_unknown_role_picks_any_day():
+    ctx = random_context_for_domain(role="UnknownRole", domain_config=GameDomainConfig)
+    assert isinstance(ctx, ScenarioContext)
+    all_days = [d for days in GameDomainConfig.user_roles.values() for d in days]
+    assert ctx.usage_day in all_days
 
 
 def test_random_context_for_domain_produces_variance():

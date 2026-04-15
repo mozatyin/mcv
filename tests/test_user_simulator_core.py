@@ -87,6 +87,22 @@ def test_simulate_stores_session_results():
     assert sim._session_results[0].values.get("ret") == "yes"
 
 
+def test_prepare_with_locked_metrics_skips_extraction():
+    with patch("mcv.schema_extractor.extract_evaluation_schema") as mock_extract:
+        locked = [EvaluationMetric("ret", "bool", "回来吗？")]
+        sim = UserSimulator("玩家", GameDomainConfig, api_key="test")
+        sim.prepare(product="游戏", locked_metrics=locked)
+        mock_extract.assert_not_called()
+        assert sim._metrics == locked
+
+
+def test_prepare_with_locked_metrics_sets_product():
+    locked = [EvaluationMetric("ret", "bool", "回来吗？")]
+    sim = UserSimulator("玩家", GameDomainConfig, api_key="test")
+    sim.prepare(product="我的游戏PRD", locked_metrics=locked)
+    assert sim._product == "我的游戏PRD"
+
+
 def test_simulate_raises_if_prepare_not_called():
     sim = UserSimulator("玩家", GameDomainConfig, api_key="test")
     import pytest
