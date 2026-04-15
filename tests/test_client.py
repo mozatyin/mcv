@@ -100,3 +100,10 @@ def test_client_decide_auto_generates_personas_when_none():
             ]
             client.decide("Q?", ["A", "B"], "ctx", product="app prd")
     mock_gen.assert_called_once()
+
+
+def test_client_decide_raises_when_no_personas_and_no_product():
+    import pytest
+    client = MCVClient(api_key="test")
+    with pytest.raises(ValueError, match="provide personas"):
+        client.decide("Q?", ["A", "B"], "ctx")
