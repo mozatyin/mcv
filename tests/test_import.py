@@ -31,3 +31,18 @@ def test_persona_decider_signature():
     assert "personas" in params, "PersonaDecider missing 'personas' param"
     assert "api_key" in params, "PersonaDecider missing 'api_key' param"
     assert "mode" in params, "PersonaDecider missing 'mode' param"
+
+
+def test_mcvclient_importable():
+    from mcv import MCVClient
+    assert MCVClient is not None
+
+
+def test_compare_report_importable():
+    from mcv import CompareReport
+    assert CompareReport is not None
+
+
+def test_build_domain_config_importable():
+    from mcv import build_domain_config
+    assert callable(build_domain_config)
