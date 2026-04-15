@@ -5,7 +5,7 @@ from mcv.cache import load_simulation_cache, save_simulation_cache
 from mcv.__main__ import trigger_background_simulation
 
 from mcv.user_simulator import UserSimulator, SessionResult
-from mcv.domain_configs import DomainConfig, GameDomainConfig, AppDomainConfig, WebDomainConfig
+from mcv.domain_configs import DomainConfig, GameDomainConfig, AppDomainConfig, WebDomainConfig, build_domain_config
 from mcv.schema_extractor import EvaluationMetric, extract_evaluation_schema
 from mcv.report import SimulationReport, MetricResult
 from mcv.population import (
@@ -19,7 +19,7 @@ __all__ = [
     "load_simulation_cache", "save_simulation_cache",
     "trigger_background_simulation",
     "UserSimulator", "SessionResult",
-    "DomainConfig", "GameDomainConfig", "AppDomainConfig", "WebDomainConfig",
+    "DomainConfig", "GameDomainConfig", "AppDomainConfig", "WebDomainConfig", "build_domain_config",
     "EvaluationMetric", "extract_evaluation_schema",
     "SimulationReport", "MetricResult",
     "TraitDimension", "Archetype", "PersonaStructure", "AgentProfile",
