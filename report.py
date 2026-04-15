@@ -118,12 +118,13 @@ def _generate_key_findings(
     import mcv.core as _core
     lines = []
     for mr in metrics.values():
-        if mr.type == "bool" and mr.true_rate is not None:
+        if mr.type == "bool" and mr.true_rate is not None \
+                and mr.ci_95_low is not None and mr.ci_95_high is not None:
             lines.append(
                 f"{mr.name}: true_rate={mr.true_rate:.0%} "
                 f"(n={mr.n_samples}, CI [{mr.ci_95_low:.0%}–{mr.ci_95_high:.0%}])"
             )
-        elif mr.type == "scale_1_5" and mr.mean is not None:
+        elif mr.type == "scale_1_5" and mr.mean is not None and mr.stdev is not None:
             lines.append(
                 f"{mr.name}: mean={mr.mean:.1f}/5 (stdev={mr.stdev:.2f}, n={mr.n_samples})"
             )
@@ -173,8 +174,9 @@ def aggregate(
     if api_key and len(results) >= 2:
         try:
             key_findings = _generate_key_findings(results, user_type, api_key)
-        except Exception:
-            pass  # key_findings is optional — never block the report
+        except Exception as exc:  # key_findings is optional — never block the report
+            import logging as _logging
+            _logging.getLogger(__name__).debug("key_findings generation skipped: %s", exc)
 
     return SimulationReport(
         n_simulations=len(session_results),

@@ -128,7 +128,8 @@ def test_aggregate_auto_key_findings():
     with _patch("mcv.core._llm_call") as mock_llm:
         mock_llm.return_value = ("Day-1 留存率为 67%，参与度均分 4.0。", 80)
         report = aggregate(sessions, metrics, "玩家", "游戏", api_key="test")
-    assert len(report.key_findings) > 10
+    mock_llm.assert_called()
+    assert report.key_findings == "Day-1 留存率为 67%，参与度均分 4.0。"
 
 
 def test_aggregate_no_key_findings_without_api_key():
@@ -144,5 +145,6 @@ def test_aggregate_no_key_findings_with_single_metric():
     with _patch("mcv.core._llm_call") as mock_llm:
         mock_llm.return_value = ("some findings", 50)
         report = aggregate(sessions, metrics, "玩家", "游戏", api_key="test")
+    mock_llm.assert_not_called()
     # Single metric → no key_findings LLM call
     assert report.key_findings == ""
