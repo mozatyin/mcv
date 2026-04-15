@@ -202,3 +202,93 @@ class UserSimulator:
             self._product[:100],
             api_key=self.api_key,
         )
+
+    def compare(
+        self,
+        product_a: str,
+        product_b: str,
+        label_a: str = "v_a",
+        label_b: str = "v_b",
+        n_runs: int = 30,
+        locked_metrics: list[EvaluationMetric] | None = None,
+        goal: str | None = None,
+    ) -> "CompareReport":
+        """Run N sessions on each variant sharing the same scenario seed sequence.
+
+        Both variants receive identical ScenarioContexts so deltas reflect
+        product differences only, not context randomness.
+        """
+        from mcv.report import aggregate, _compute_compare
+
+        # Resolve metrics once (shared across both variants)
+        if locked_metrics is not None:
+            metrics = locked_metrics
+        else:
+            from mcv.schema_extractor import extract_evaluation_schema
+            metrics = extract_evaluation_schema(goal or "", self.api_key)
+
+        # Pre-generate N shared scenario contexts (same seeds for both variants)
+        roles = list(self.domain_config.user_roles.keys())
+        contexts = [
+            _random_context_for_domain(
+                roles[i % len(roles)] if roles else None,
+                self.domain_config,
+            )
+            for i in range(n_runs)
+        ]
+
+        import mcv.core as _core
+
+        def _run_variant(product: str) -> list[SessionResult]:
+            results = []
+            for ctx in contexts:
+                prompt = _build_session_prompt(
+                    user_type=self.user_type,
+                    context=ctx,
+                    product=product,
+                    metrics=metrics,
+                    domain_config=self.domain_config,
+                )
+                raw, _ = _core._llm_call(
+                    prompt, self.api_key,
+                    max_tokens=800, temperature=1.0,
+                    model=_core._haiku_model(self.api_key),
+                )
+                values = _parse_session_output(raw, metrics)
+                results.append(SessionResult(scenario=ctx, narrative=raw, values=values))
+            return results
+
+        sessions_a = _run_variant(product_a)
+        sessions_b = _run_variant(product_b)
+
+        report_a = aggregate(sessions_a, metrics, self.user_type, product_a[:100],
+                             api_key=self.api_key)
+        report_b = aggregate(sessions_b, metrics, self.user_type, product_b[:100],
+                             api_key=self.api_key)
+
+        # Generate key_diff summary (optional — never block on failure)
+        key_diff = ""
+        try:
+            delta_lines = []
+            for name, mr_a in report_a.metrics.items():
+                mr_b = report_b.metrics.get(name)
+                if mr_b and mr_a.type == "bool" and mr_a.true_rate is not None and mr_b.true_rate is not None:
+                    delta_lines.append(f"{name}: {mr_a.true_rate:.0%} → {mr_b.true_rate:.0%}")
+                elif mr_b and mr_a.type == "scale_1_5" and mr_a.mean is not None and mr_b.mean is not None:
+                    delta_lines.append(f"{name}: {mr_a.mean:.1f} → {mr_b.mean:.1f}")
+            if delta_lines and self.api_key:
+                prompt = (
+                    f"版本对比 ({label_a} vs {label_b}):\n"
+                    + "\n".join(delta_lines)
+                    + "\n\n用一句话说明哪个版本更好，差异是否显著。"
+                )
+                raw, _ = _core._llm_call(
+                    prompt, self.api_key, max_tokens=100,
+                    model=_core._haiku_model(self.api_key),
+                )
+                key_diff = raw.strip()
+        except Exception as exc:
+            import logging as _logging
+            _logging.getLogger(__name__).debug("key_diff generation skipped: %s", exc)
+
+        return _compute_compare(report_a, report_b, label_a, label_b, key_diff=key_diff)
