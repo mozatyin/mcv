@@ -1,5 +1,4 @@
-import sys
-sys.path.insert(0, '/Users/michael/mcv')
+
 
 from mcv.simulator import SimulationRun, FeatureSignal, _derive_kano, _derive_aarrr
 from mcv.scenarios import ScenarioContext

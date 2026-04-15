@@ -1,7 +1,5 @@
 import json
-import sys
 import tempfile
-sys.path.insert(0, '/Users/michael/mcv')
 
 from pathlib import Path
 from unittest.mock import patch

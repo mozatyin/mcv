@@ -1,5 +1,4 @@
-import sys
-sys.path.insert(0, '/Users/michael/mcv')
+
 
 from mcv.user_simulator import SessionResult, _build_session_prompt, _parse_session_output
 from mcv.schema_extractor import EvaluationMetric

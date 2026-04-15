@@ -1,5 +1,4 @@
-import sys
-sys.path.insert(0, '/Users/michael/mcv')
+
 
 
 def test_user_simulator_importable_from_mcv():

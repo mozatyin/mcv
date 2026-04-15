@@ -1,8 +1,5 @@
 import dataclasses
 import inspect
-import sys
-
-sys.path.insert(0, '/Users/michael/mcv')
 
 
 def test_import_symbols():

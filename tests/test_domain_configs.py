@@ -1,5 +1,4 @@
-import sys
-sys.path.insert(0, '/Users/michael/mcv')
+
 
 from mcv.domain_configs import DomainConfig, GameDomainConfig, AppDomainConfig, WebDomainConfig
 from mcv.scenarios import random_context_for_domain, ScenarioContext

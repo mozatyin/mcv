@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import math
 import re
+import statistics
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -59,14 +61,12 @@ def _aggregate_bool(values: list[str]) -> MetricResult:
     n = len(values)
     p = round(true_count / n, 4)
     lo, hi = _wilson_ci(p, n)
-    import math
     stdev = round(math.sqrt(p * (1 - p)), 4)
     return MetricResult(name="", type="bool", true_rate=p,
                         stdev=stdev, ci_95_low=lo, ci_95_high=hi, n_samples=n)
 
 
 def _aggregate_scale(values: list[str]) -> MetricResult:
-    import statistics, math
     nums = []
     for v in values:
         m = re.search(r'(?<!\d)([1-5])(?!\d)', v)

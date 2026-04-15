@@ -1,6 +1,4 @@
 import os
-import sys
-sys.path.insert(0, '/Users/michael/mcv')
 
 from unittest.mock import patch
 from mcv import Persona, PersonaDecider

@@ -1,5 +1,4 @@
-import sys, json, tempfile
-sys.path.insert(0, '/Users/michael/mcv')
+import json, tempfile
 
 from pathlib import Path
 from unittest.mock import patch, MagicMock

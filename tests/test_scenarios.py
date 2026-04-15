@@ -1,5 +1,4 @@
-import sys
-sys.path.insert(0, '/Users/michael/mcv')
+
 
 from mcv.scenarios import ScenarioContext, random_context, ROLE_DAY_RANGES
 

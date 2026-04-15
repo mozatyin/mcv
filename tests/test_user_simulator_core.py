@@ -1,5 +1,4 @@
-import sys
-sys.path.insert(0, '/Users/michael/mcv')
+
 
 from unittest.mock import patch, MagicMock
 from mcv.user_simulator import UserSimulator

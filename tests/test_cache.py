@@ -1,5 +1,4 @@
-import json, sys, tempfile
-sys.path.insert(0, '/Users/michael/mcv')
+import json, tempfile
 
 from pathlib import Path
 from mcv.cache import save_simulation_cache, load_simulation_cache, _feature_hash

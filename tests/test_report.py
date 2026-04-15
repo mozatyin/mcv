@@ -1,5 +1,4 @@
-import sys
-sys.path.insert(0, '/Users/michael/mcv')
+
 
 from mcv.report import (
     _aggregate_bool, _aggregate_scale, _aggregate_text,
