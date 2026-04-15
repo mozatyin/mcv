@@ -69,6 +69,77 @@ class SimulationReport:
         ]
 
 
+@dataclass
+class CompareReport:
+    """A/B comparison result — delta between two SimulationReports."""
+    n_runs_per_variant: int
+    variant_a_label: str
+    variant_b_label: str
+    variant_a: SimulationReport
+    variant_b: SimulationReport
+    deltas: dict[str, float]       # metric_name → B - A
+    improvements: list[str]        # metrics where B is significantly better than A
+    regressions: list[str]         # metrics where B is significantly worse than A
+    key_diff: str                  # one-line summary (empty string if not generated)
+
+
+def _compute_compare(
+    report_a: SimulationReport,
+    report_b: SimulationReport,
+    label_a: str,
+    label_b: str,
+    key_diff: str = "",
+) -> CompareReport:
+    """Compute deltas between two SimulationReports.
+
+    Significance: delta > half the CI width of variant_a's metric.
+    This means B must move outside A's confidence interval to count.
+    """
+    deltas: dict[str, float] = {}
+    improvements: list[str] = []
+    regressions: list[str] = []
+
+    for name, mr_a in report_a.metrics.items():
+        mr_b = report_b.metrics.get(name)
+        if mr_b is None:
+            continue
+
+        ci_width = (
+            ((mr_a.ci_95_high or 0.0) - (mr_a.ci_95_low or 0.0))
+            if (mr_a.ci_95_low is not None and mr_a.ci_95_high is not None)
+            else 0.0
+        )
+        threshold = ci_width / 2
+
+        if mr_a.type == "bool" and mr_a.true_rate is not None and mr_b.true_rate is not None:
+            delta = round(mr_b.true_rate - mr_a.true_rate, 4)
+            deltas[name] = delta
+            if delta > threshold:
+                improvements.append(name)
+            elif delta < -threshold:
+                regressions.append(name)
+
+        elif mr_a.type == "scale_1_5" and mr_a.mean is not None and mr_b.mean is not None:
+            delta = round(mr_b.mean - mr_a.mean, 4)
+            deltas[name] = delta
+            if delta > threshold:
+                improvements.append(name)
+            elif delta < -threshold:
+                regressions.append(name)
+
+    return CompareReport(
+        n_runs_per_variant=report_a.n_simulations,
+        variant_a_label=label_a,
+        variant_b_label=label_b,
+        variant_a=report_a,
+        variant_b=report_b,
+        deltas=deltas,
+        improvements=improvements,
+        regressions=regressions,
+        key_diff=key_diff,
+    )
+
+
 def _wilson_ci(p: float, n: int, z: float = 1.96) -> tuple[float, float]:
     """Wilson score interval for a proportion p with n samples."""
     if n == 0:
