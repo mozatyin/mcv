@@ -148,3 +148,36 @@ def test_aggregate_no_key_findings_with_single_metric():
     mock_llm.assert_not_called()
     # Single metric → no key_findings LLM call
     assert report.key_findings == ""
+
+
+def test_simulation_report_day1_return_rate():
+    metrics = [EvaluationMetric("ret", "bool", "?")]
+    sessions = [SessionResult(CTX, "x", {"ret": "yes"}),
+                SessionResult(CTX, "x", {"ret": "no"})]
+    report = aggregate(sessions, metrics, "玩家", "游戏")
+    assert abs(report.day1_return_rate - 0.5) < 0.01
+
+
+def test_simulation_report_day1_return_rate_none_when_no_bool():
+    metrics = [EvaluationMetric("eng", "scale_1_5", "?")]
+    sessions = [SessionResult(CTX, "x", {"eng": "4"})]
+    report = aggregate(sessions, metrics, "玩家", "游戏")
+    assert report.day1_return_rate is None
+
+
+def test_simulation_report_friction_themes():
+    metrics = [EvaluationMetric("friction", "text", "?")]
+    sessions = [SessionResult(CTX, "x", {"friction": "tutorial too long"})]
+    report = aggregate(sessions, metrics, "玩家", "游戏")
+    assert isinstance(report.friction_themes, list)
+
+
+def test_simulation_report_locked_schema():
+    metrics = [EvaluationMetric("ret", "bool", "回来吗？")]
+    sessions = [SessionResult(CTX, "x", {"ret": "yes"})]
+    report = aggregate(sessions, metrics, "玩家", "游戏")
+    schema = report.locked_schema
+    assert len(schema) == 1
+    assert schema[0]["name"] == "ret"
+    assert schema[0]["type"] == "bool"
+    assert schema[0]["question"] == "回来吗？"

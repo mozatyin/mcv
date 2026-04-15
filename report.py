@@ -6,7 +6,7 @@ import math
 import re
 import statistics
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from mcv.schema_extractor import EvaluationMetric
 from mcv.user_simulator import SessionResult
@@ -37,7 +37,36 @@ class SimulationReport:
     user_type: str
     product_summary: str
     metrics: dict[str, MetricResult]
-    key_findings: str = ""  # populated externally if needed
+    key_findings: str = ""
+    _metrics_list: list = field(default_factory=list, repr=False, compare=False)
+
+    @property
+    def day1_return_rate(self) -> float | None:
+        """First bool metric's true_rate. Convenience for ELTM BattleStage."""
+        for mr in self.metrics.values():
+            if mr.type == "bool" and mr.true_rate is not None:
+                return mr.true_rate
+        return None
+
+    @property
+    def friction_themes(self) -> list[str]:
+        """First text metric's themes. Convenience for ELTM BattleStage."""
+        for mr in self.metrics.values():
+            if mr.type == "text" and mr.themes:
+                return mr.themes
+        return []
+
+    @property
+    def locked_schema(self) -> list[dict]:
+        """Serialized metric schema for cross-round reuse in PDCA loops."""
+        return [
+            {
+                "name": mr.name,
+                "type": mr.type,
+                "question": self._metrics_list[i].question if i < len(self._metrics_list) else "",
+            }
+            for i, mr in enumerate(self.metrics.values())
+        ]
 
 
 def _wilson_ci(p: float, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -184,4 +213,5 @@ def aggregate(
         product_summary=product_summary,
         metrics=results,
         key_findings=key_findings,
+        _metrics_list=metrics,
     )
