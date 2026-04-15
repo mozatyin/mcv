@@ -6,6 +6,7 @@ import random
 from dataclasses import dataclass, field
 
 from mcv.scenarios import ScenarioContext
+from mcv.scenarios import random_context_for_domain as _random_context_for_domain
 from mcv.schema_extractor import EvaluationMetric
 from mcv.domain_configs import DomainConfig
 
@@ -16,26 +17,6 @@ class SessionResult:
     scenario: ScenarioContext
     narrative: str
     values: dict[str, str] = field(default_factory=dict)   # {metric_name: raw_string}
-
-
-def _random_context_for_domain(role: str | None, domain_config: DomainConfig) -> ScenarioContext:
-    """Randomize scenario context using DomainConfig options."""
-    time_of_day = random.choice(domain_config.time_options)
-    emotional_state = random.choice(domain_config.emotional_states)
-
-    if role and role in domain_config.user_roles:
-        usage_day = random.choice(domain_config.user_roles[role])
-    else:
-        all_days = [d for days in domain_config.user_roles.values() for d in days]
-        usage_day = random.choice(all_days) if all_days else 1
-
-    trigger = random.choice(domain_config.triggers)
-    return ScenarioContext(
-        time_of_day=time_of_day,
-        emotional_state=emotional_state,
-        usage_day=usage_day,
-        trigger=trigger,
-    )
 
 
 def _build_session_prompt(

@@ -64,7 +64,11 @@ class MCVClient:
         n_runs: int = 30,
         locked_metrics: list[EvaluationMetric] | None = None,
     ) -> CompareReport:
-        """Compare two product variants using shared scenario seeds."""
+        """Compare two product variants using shared scenario seeds.
+
+        When domain_config is None, it is inferred from product_a's description.
+        Both variants run with the same inferred or provided config.
+        """
         cfg = domain_config or build_domain_config(product_a, self._api_key)
         sim = UserSimulator(user_type, cfg, api_key=self._api_key)
         return sim.compare(
