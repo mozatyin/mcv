@@ -109,7 +109,7 @@ def _compute_compare(
             if (mr_a.ci_95_low is not None and mr_a.ci_95_high is not None)
             else 0.0
         )
-        threshold = ci_width / 2
+        threshold = ci_width / 2 if ci_width > 0 else float("inf")
 
         if mr_a.type == "bool" and mr_a.true_rate is not None and mr_b.true_rate is not None:
             delta = round(mr_b.true_rate - mr_a.true_rate, 4)
