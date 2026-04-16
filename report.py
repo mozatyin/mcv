@@ -83,6 +83,29 @@ class CompareReport:
     key_diff: str                  # one-line summary (empty string if not generated)
 
 
+@dataclass
+class FeatureAAR:
+    """Population-grounded AARRR scores for a single product feature."""
+    feature_id: str
+    acquisition: float          # 0.0–1.0 population-weighted mean
+    activation: float
+    retention: float
+    revenue: float
+    referral: float
+    confidence: float           # 1 − mean stdev across archetypes (0–1)
+    archetype_votes: dict       # {archetype_name: {dimension: score}}
+
+
+@dataclass
+class CoherenceReport:
+    """Dependency validation result for a selected feature set."""
+    selected_feature_ids: list
+    missing_dependencies: list  # [{"feature_id", "required_by", "reason"}]
+    blocked_journeys: list      # human-readable narrative strings
+    reinstate_recommendations: list  # feature_ids to add back
+    is_coherent: bool
+
+
 def _compute_compare(
     report_a: SimulationReport,
     report_b: SimulationReport,

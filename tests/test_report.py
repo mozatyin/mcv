@@ -181,3 +181,40 @@ def test_simulation_report_locked_schema():
     assert schema[0]["name"] == "ret"
     assert schema[0]["type"] == "bool"
     assert schema[0]["question"] == "回来吗？"
+
+
+from mcv.report import FeatureAAR, CoherenceReport
+
+def test_feature_aar_fields():
+    f = FeatureAAR(
+        feature_id="invite_friends",
+        acquisition=0.3, activation=0.5, retention=0.4,
+        revenue=0.1, referral=0.9,
+        confidence=0.8,
+        archetype_votes={"Gamer": {"acquisition": 0.3, "referral": 0.9}},
+    )
+    assert f.feature_id == "invite_friends"
+    assert f.referral == 0.9
+    assert "Gamer" in f.archetype_votes
+
+def test_coherence_report_is_coherent_true():
+    r = CoherenceReport(
+        selected_feature_ids=["ludo", "invite_friends"],
+        missing_dependencies=[],
+        blocked_journeys=[],
+        reinstate_recommendations=[],
+        is_coherent=True,
+    )
+    assert r.is_coherent
+
+def test_coherence_report_is_coherent_false():
+    r = CoherenceReport(
+        selected_feature_ids=["ludo"],
+        missing_dependencies=[{"feature_id": "invite_friends", "required_by": ["ludo"],
+                               "reason": "ludo needs multiple players"}],
+        blocked_journeys=["User tried to play Ludo but had no friends"],
+        reinstate_recommendations=["invite_friends"],
+        is_coherent=False,
+    )
+    assert not r.is_coherent
+    assert "invite_friends" in r.reinstate_recommendations
