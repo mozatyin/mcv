@@ -12,6 +12,33 @@ from mcv.schema_extractor import EvaluationMetric
 from mcv.population import PopulationResearcher
 
 
+_SOCIAL_ENABLER_KW = frozenset({
+    "invite", "friend", "friends", "refer", "referral", "connect", "network", "share",
+})
+_SOCIAL_DEPENDENT_KW = frozenset({
+    "game", "ludo", "play", "battle", "versus", "match",
+    "multiplayer", "players", "opponent", "opponents", "party", "room",
+})
+
+_COHERENCE_PROMPT = """You are a product designer reviewing a mobile app feature set.
+
+Product: {product_description}
+
+Selected features (only these will be in the app):
+{selected_block}
+
+Dropped features (not in the app):
+{dropped_block}
+
+Question: What Day-1 user journeys are blocked or significantly degraded because of missing features?
+Which dropped features are most critical to reinstate?
+
+Return ONLY valid JSON (no markdown):
+{{
+  "blocked_journeys": ["narrative description of blocked flow", ...],
+  "critical_to_reinstate": ["feature_id", ...]
+}}"""
+
 _AARRR_VOTE_PROMPT = """You are scoring product features for a mobile app from the perspective of different user archetypes.
 
 Product: {product_description}
@@ -239,3 +266,93 @@ class MCVClient:
                     archetype_votes={},
                 ))
         return scored
+
+    def validate_coherence(
+        self,
+        product_description: str,
+        selected_features: list,
+        dropped_features: list | None = None,
+        user_type: str = "普通用户",
+    ):
+        """Detect dependency gaps in a selected feature set.
+
+        Pass 1 (rule-based, free): flag social-dependent features (ludo/game/room)
+        selected without any social-enabler (invite/friends/refer).
+
+        Pass 2 (1 Sonnet call, only when gaps found AND dropped_features provided):
+        identify blocked Day-1 journeys and critical features to reinstate.
+
+        Returns:
+            CoherenceReport. is_coherent=True when no dependency violations found.
+        """
+        import json as _json
+        import re as _re
+        from mcv import core as _core
+
+        selected_ids = [f["id"] for f in selected_features]
+        missing_deps: list = []
+        blocked_journeys: list = []
+        reinstate: list = []
+
+        # Pass 1: rule-based dependency check (free, no LLM)
+        has_enabler = any(
+            bool(set((f.get("description", "") or f["name"]).lower().split()) & _SOCIAL_ENABLER_KW)
+            for f in selected_features
+        )
+        dependent_features = [
+            f for f in selected_features
+            if bool(set((f.get("description", "") or f["name"]).lower().split()) & _SOCIAL_DEPENDENT_KW)
+        ]
+
+        if dependent_features and not has_enabler:
+            dep_ids = [f["id"] for f in dependent_features]
+            missing_deps.append({
+                "feature_id": "social_enabler",
+                "required_by": dep_ids,
+                "reason": "multiplayer features need a way to connect with friends",
+            })
+            blocked_journeys.append(
+                f"User cannot play {', '.join(dep_ids)} without friends"
+                " — no invite/friend feature selected"
+            )
+            # Find best candidate in dropped_features (rule-based)
+            if dropped_features:
+                for df in dropped_features:
+                    df_words = set((df.get("description", "") or df["name"]).lower().split())
+                    if df_words & _SOCIAL_ENABLER_KW:
+                        reinstate.append(df["id"])
+
+        # Pass 2: LLM gap analysis (only when gaps exist AND dropped_features provided)
+        if missing_deps and dropped_features:
+            selected_block = "\n".join(
+                f"- {f['id']}: {f['name']} — {f.get('description', '')}"
+                for f in selected_features
+            )
+            dropped_block = "\n".join(
+                f"- {f['id']}: {f['name']} — {f.get('description', '')}"
+                for f in dropped_features
+            )
+            prompt = _COHERENCE_PROMPT.format(
+                product_description=product_description[:600],
+                selected_block=selected_block,
+                dropped_block=dropped_block,
+            )
+            try:
+                raw, _ = _core._llm_call(prompt, self._api_key, max_tokens=800)
+                m = _re.search(r'\{.*\}', raw, _re.DOTALL)
+                if m:
+                    data = _json.loads(m.group())
+                    blocked_journeys.extend(data.get("blocked_journeys", []))
+                    for fid in data.get("critical_to_reinstate", []):
+                        if fid not in reinstate:
+                            reinstate.append(fid)
+            except Exception:
+                pass  # LLM pass is best-effort; rule-based result stands
+
+        return CoherenceReport(
+            selected_feature_ids=selected_ids,
+            missing_dependencies=missing_deps,
+            blocked_journeys=list(dict.fromkeys(blocked_journeys)),
+            reinstate_recommendations=list(dict.fromkeys(reinstate)),
+            is_coherent=len(missing_deps) == 0,
+        )
