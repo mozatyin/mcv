@@ -39,6 +39,38 @@ Return ONLY valid JSON (no markdown):
   "critical_to_reinstate": ["feature_id", ...]
 }}"""
 
+_ATTRIBUTE_PROMPT = """You are a product analyst mapping user friction reports to specific app features.
+
+Product: {product_description}
+
+Features in this product:
+{features_block}
+
+Observed user frictions (from behavioral simulation):
+{frictions_block}
+
+For each friction, identify the responsible feature(s) and generate a specific fix.
+Map to the SMALLEST set of defects that covers all frictions.
+
+Return ONLY valid JSON (no markdown):
+{{
+  "defects": [
+    {{
+      "type": "ux",
+      "severity": "P1",
+      "description": "clear description of what is broken",
+      "affected_screens": ["screen_id_from_feature_id"],
+      "suggested_fix": "concrete actionable fix instruction"
+    }}
+  ]
+}}
+
+Rules:
+- type must be one of: "design", "ux", "rules"
+- severity must be one of: "P0" (blocking), "P1" (major), "P2" (minor)
+- affected_screens: use feature_id values as screen references
+- suggested_fix: write what the designer should change, not what the problem is"""
+
 _AARRR_VOTE_PROMPT = """You are scoring product features for a mobile app from the perspective of different user archetypes.
 
 Product: {product_description}
@@ -356,3 +388,78 @@ class MCVClient:
             reinstate_recommendations=list(dict.fromkeys(reinstate)),
             is_coherent=len(missing_deps) == 0,
         )
+
+    def attribute_frictions(
+        self,
+        product: str,
+        frictions: list,
+        features: list,
+        game_name: str = "",
+        original_slug: str = "",
+    ) -> dict:
+        """Map simulation friction themes to a reforge()-compatible defect manifest.
+
+        One Sonnet call: friction themes + feature list → structured defect list.
+        Empty frictions → empty manifest with no LLM call.
+
+        Args:
+            product: PRD text or product description.
+            frictions: friction theme strings from SimulationReport.friction_themes.
+            features: [{"id": str, "name": str, "description": str}, ...]
+            game_name: passed through to manifest (used by reforge()).
+            original_slug: passed through to manifest (used by reforge()).
+
+        Returns:
+            dict with shape: {"defects": [...], "game_name": str, "original_slug": str}
+            Directly usable as fix_requirement in eltm.reforge().
+        """
+        import json as _json
+        import re as _re
+        from mcv import core as _core
+
+        if not frictions:
+            return {"defects": [], "game_name": game_name, "original_slug": original_slug}
+
+        features_block = (
+            "\n".join(f"- {f['id']}: {f['name']} — {f.get('description', '')}" for f in features)
+            or "(none)"
+        )
+        frictions_block = "\n".join(f"- {fr}" for fr in frictions)
+
+        prompt = _ATTRIBUTE_PROMPT.format(
+            product_description=product[:800],
+            features_block=features_block,
+            frictions_block=frictions_block,
+        )
+
+        raw, _ = _core._llm_call(prompt, self._api_key, max_tokens=1500)
+
+        defects: list = []
+        m = _re.search(r'\{.*\}', raw, _re.DOTALL)
+        if m:
+            try:
+                data = _json.loads(m.group())
+                for d in data.get("defects", []):
+                    if not isinstance(d, dict):
+                        continue
+                    dtype = d.get("type", "design")
+                    if dtype not in ("design", "ux", "rules"):
+                        dtype = "design"
+                    severity = d.get("severity", "P1")
+                    if severity not in ("P0", "P1", "P2"):
+                        severity = "P1"
+                    defects.append({
+                        "type": dtype,
+                        "severity": severity,
+                        "description": str(d.get("description", "")),
+                        "affected_screens": list(d.get("affected_screens", [])),
+                        "suggested_fix": str(d.get("suggested_fix", "")),
+                    })
+            except (ValueError, _json.JSONDecodeError):
+                pass
+
+        return {
+            "defects": defects,
+            "game_name": game_name,
+            "original_slug": original_slug,
+        }
