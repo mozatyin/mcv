@@ -7,7 +7,7 @@ from mcv.__main__ import trigger_background_simulation
 from mcv.user_simulator import UserSimulator, SessionResult
 from mcv.domain_configs import DomainConfig, GameDomainConfig, AppDomainConfig, WebDomainConfig, build_domain_config
 from mcv.schema_extractor import EvaluationMetric, extract_evaluation_schema
-from mcv.report import SimulationReport, MetricResult, CompareReport
+from mcv.report import SimulationReport, MetricResult, CompareReport, FeatureAAR, CoherenceReport
 from mcv.client import MCVClient
 from mcv.population import (
     TraitDimension, Archetype, PersonaStructure, AgentProfile,
@@ -22,7 +22,7 @@ __all__ = [
     "UserSimulator", "SessionResult",
     "DomainConfig", "GameDomainConfig", "AppDomainConfig", "WebDomainConfig", "build_domain_config",
     "EvaluationMetric", "extract_evaluation_schema",
-    "SimulationReport", "MetricResult", "CompareReport",
+    "SimulationReport", "MetricResult", "CompareReport", "FeatureAAR", "CoherenceReport",
     "TraitDimension", "Archetype", "PersonaStructure", "AgentProfile",
     "PersonaPool", "PopulationResearcher",
     "MCVClient",
