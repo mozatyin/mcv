@@ -13,6 +13,10 @@ from mcv.population import (
     TraitDimension, Archetype, PersonaStructure, AgentProfile,
     PersonaPool, PopulationResearcher,
 )
+from mcv.behavioral_framework import (
+    SYCOPHANCY_DEFLATOR, BEHAVIORAL_FRAMEWORK_SECTION,
+    ADVERSARIAL_PERSONA_SECTION, BEHAVIORAL_METRICS, COGNITIVE_BUDGETS,
+)
 
 __all__ = [
     "Persona", "DecisionResult", "PersonaDecider", "load_or_generate",
@@ -26,4 +30,6 @@ __all__ = [
     "TraitDimension", "Archetype", "PersonaStructure", "AgentProfile",
     "PersonaPool", "PopulationResearcher",
     "MCVClient",
+    "SYCOPHANCY_DEFLATOR", "BEHAVIORAL_FRAMEWORK_SECTION",
+    "ADVERSARIAL_PERSONA_SECTION", "BEHAVIORAL_METRICS", "COGNITIVE_BUDGETS",
 ]

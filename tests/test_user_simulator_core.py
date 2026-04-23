@@ -24,7 +24,7 @@ def test_prepare_returns_self_for_chaining():
 
 
 def test_simulate_calls_llm_n_times():
-    sim = UserSimulator("玩家", GameDomainConfig, api_key="test")
+    sim = UserSimulator("玩家", GameDomainConfig, api_key="test", use_behavioral_framework=False)
     sim._metrics = [EvaluationMetric("x", "bool", "?")]
     sim._product = "游戏"
 

@@ -269,7 +269,7 @@ def test_simulate_with_pool_uses_human_story():
     structure = PersonaStructure("Test", "test app", dims, archs)
     agents = PersonaPool(structure).generate(3)
 
-    sim = UserSimulator("test user", AppDomainConfig, api_key="test")
+    sim = UserSimulator("test user", AppDomainConfig, api_key="test", use_behavioral_framework=False)
     metrics = [EvaluationMetric("day1_return", "bool", "会回来吗？")]
     sim.prepare_with_pool(product="test product", pool=agents, locked_metrics=metrics)
 

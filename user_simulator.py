@@ -26,6 +26,7 @@ def _build_session_prompt(
     metrics: list[EvaluationMetric],
     domain_config: DomainConfig,
     screen_id: str | None = None,
+    framework_section: str = "",
 ) -> str:
     """Build the per-session LLM prompt from user type, context, product, and metrics.
 
@@ -51,7 +52,8 @@ def _build_session_prompt(
         f"  状态：{context.emotional_state}\n"
         f"  触发：{context.trigger.replace('_', ' ')}\n"
         f"  使用天数：{context.usage_day}\n\n"
-        f"{domain_config.session_framing}：\n{product_section}\n\n"
+        + (f"{framework_section}\n" if framework_section else "")
+        + f"{domain_config.session_framing}：\n{product_section}\n\n"
         f"叙述你接下来的 6-8 个操作。只写你做了什么，不写感想。\n"
         f"用第三人称叙述行为，比如：\"他点击了...\"，\"他滑过了...\"\n\n"
         f"叙述完毕后，每行回答一个问题：\n{metric_lines}\n"
@@ -86,14 +88,17 @@ class UserSimulator:
         report = sim.simulate(n_runs=60).report()
     """
 
-    def __init__(self, user_type: str, domain_config: DomainConfig, api_key: str):
+    def __init__(self, user_type: str, domain_config: DomainConfig, api_key: str,
+                 use_behavioral_framework: bool = True):
         self.user_type = user_type
         self.domain_config = domain_config
         self.api_key = api_key
+        self.use_behavioral_framework = use_behavioral_framework
         self._metrics: list[EvaluationMetric] = []
         self._product: str = ""
         self._screen_id: str | None = None
         self._session_results: list[SessionResult] = []
+        self._adversarial_results: list[SessionResult] = []
         self._agent_pool: list | None = None   # populated by prepare_with_pool()
 
     def prepare(
@@ -144,6 +149,22 @@ class UserSimulator:
         if not self._product:
             raise RuntimeError("call prepare() before simulate()")
         import mcv.core as _core
+
+        from mcv.behavioral_framework import (
+            BEHAVIORAL_FRAMEWORK_SECTION, ADVERSARIAL_PERSONA_SECTION,
+            BEHAVIORAL_METRICS, COGNITIVE_BUDGETS,
+        )
+
+        # Inject behavioral metrics if framework is active and metrics not already present
+        if self.use_behavioral_framework:
+            existing_names = {m.name for m in self._metrics}
+            from mcv.schema_extractor import EvaluationMetric as _EM
+            for bname, btype, bquestion in BEHAVIORAL_METRICS:
+                if bname not in existing_names:
+                    self._metrics.append(_EM(bname, btype, bquestion))
+
+        self._adversarial_results = []
+
         self._session_results = []
         roles = list(self.domain_config.user_roles.keys())
         for i in range(n_runs):
@@ -155,6 +176,12 @@ class UserSimulator:
                 user_type_text = self.user_type
                 role = roles[i % len(roles)] if roles else None
 
+            if self.use_behavioral_framework:
+                budget = COGNITIVE_BUDGETS.get("default", 15)
+                framework_section = BEHAVIORAL_FRAMEWORK_SECTION.format(cognitive_budget=budget)
+            else:
+                framework_section = ""
+
             ctx = _random_context_for_domain(role, self.domain_config)
             prompt = _build_session_prompt(
                 user_type=user_type_text,
@@ -163,6 +190,7 @@ class UserSimulator:
                 metrics=self._metrics,
                 domain_config=self.domain_config,
                 screen_id=self._screen_id,
+                framework_section=framework_section,
             )
             raw, _ = _core._llm_call(
                 prompt,
@@ -177,6 +205,41 @@ class UserSimulator:
                 narrative=raw,
                 values=values,
             ))
+
+        # Adversarial pass: simulate high-churn-risk users
+        if self.use_behavioral_framework:
+            adv_n = max(1, n_runs // 5)
+            adv_framework = BEHAVIORAL_FRAMEWORK_SECTION.format(
+                cognitive_budget=COGNITIVE_BUDGETS.get("adversarial", 6)
+            )
+            roles = list(self.domain_config.user_roles.keys())
+            for j in range(adv_n):
+                adv_user_type = ADVERSARIAL_PERSONA_SECTION
+                ctx = _random_context_for_domain(
+                    roles[j % len(roles)] if roles else None,
+                    self.domain_config,
+                )
+                prompt = _build_session_prompt(
+                    user_type=adv_user_type,
+                    context=ctx,
+                    product=self._product,
+                    metrics=self._metrics,
+                    domain_config=self.domain_config,
+                    screen_id=self._screen_id,
+                    framework_section=adv_framework,
+                )
+                raw, _ = _core._llm_call(
+                    prompt, self.api_key,
+                    max_tokens=800, temperature=1.0,
+                    model=_core._haiku_model(self.api_key),
+                )
+                values = _parse_session_output(raw, self._metrics)
+                self._adversarial_results.append(SessionResult(
+                    scenario=ctx,
+                    narrative=raw,
+                    values=values,
+                ))
+
         return self
 
     def report(self) -> "SimulationReport":
@@ -188,6 +251,7 @@ class UserSimulator:
             self.user_type,
             self._product[:100],
             api_key=self.api_key,
+            adversarial_results=self._adversarial_results,
         )
 
     def compare(
@@ -235,6 +299,7 @@ class UserSimulator:
                     product=product,
                     metrics=metrics,
                     domain_config=self.domain_config,
+                    framework_section="",
                 )
                 raw, _ = _core._llm_call(
                     prompt, self.api_key,

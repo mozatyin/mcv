@@ -38,6 +38,7 @@ class SimulationReport:
     product_summary: str
     metrics: dict[str, MetricResult]
     key_findings: str = ""
+    adversarial_frictions: list[str] = field(default_factory=list)
     _metrics_list: list = field(default_factory=list, repr=False, compare=False)
 
     @property
@@ -67,6 +68,53 @@ class SimulationReport:
             }
             for i, mr in enumerate(self.metrics.values())
         ]
+
+    @property
+    def day1_return_rate_adjusted(self) -> float | None:
+        """Day-1 return rate after sycophancy deflation (×0.70).
+
+        LLMs over-rate cooperative scenarios by ~30-40% vs real user data
+        (AgentBench/AgentA/B research). 0.70 deflator gives calibrated estimate.
+        """
+        rate = self.day1_return_rate
+        if rate is None:
+            return None
+        return round(rate * 0.70, 4)
+
+    @property
+    def hook_completion_rate(self) -> float | None:
+        """Fraction of sessions that completed the full Hook loop (Trigger→Action→Reward→Investment).
+
+        Returns hook_completed metric's true_rate, or None if metric not present.
+        """
+        mr = self.metrics.get("hook_completed")
+        if mr is not None and mr.true_rate is not None:
+            return mr.true_rate
+        return None
+
+    @property
+    def benchmark_context(self) -> str:
+        """Industry benchmark context for the adjusted Day-1 return rate.
+
+        Gaming industry benchmarks (source: AppsFlyer/Liftoff mobile gaming reports):
+        - Exceptional: 35%+ (top quartile)
+        - Good: 28-35%
+        - Average: 26-28%
+        - Poor: 10-26%
+        - Below survival: < 10%
+        """
+        rate = self.day1_return_rate_adjusted
+        if rate is None:
+            return ""
+        if rate >= 0.35:
+            return f"Excellent — top quartile (adjusted {rate:.0%} vs benchmark 35%+)"
+        if rate >= 0.28:
+            return f"Good — above industry average (adjusted {rate:.0%} vs benchmark 26-28%)"
+        if rate >= 0.20:
+            return f"Near industry average (adjusted {rate:.0%} vs benchmark 26-28%)"
+        if rate >= 0.10:
+            return f"Poor — below industry average (adjusted {rate:.0%} vs benchmark 26-28%)"
+        return f"Below survival threshold (adjusted {rate:.0%} vs industry avg 26-28%)"
 
 
 @dataclass
@@ -274,6 +322,7 @@ def aggregate(
     user_type: str,
     product_summary: str,
     api_key: str | None = None,
+    adversarial_results: list[SessionResult] | None = None,
 ) -> SimulationReport:
     """Aggregate N SessionResults → one SimulationReport per metric."""
     metric_values: dict[str, list[str]] = defaultdict(list)
@@ -301,11 +350,24 @@ def aggregate(
             import logging as _logging
             _logging.getLogger(__name__).debug("key_findings generation skipped: %s", exc)
 
+    # Extract friction themes from adversarial sessions
+    adversarial_frictions: list[str] = []
+    if adversarial_results:
+        adv_texts: list[str] = []
+        for sr in adversarial_results:
+            for val in sr.values.values():
+                if val and len(val) > 5:  # skip yes/no/1-5
+                    adv_texts.append(val)
+        if adv_texts:
+            adv_mr = _aggregate_text(adv_texts, api_key)
+            adversarial_frictions = adv_mr.themes or adv_texts[:5]
+
     return SimulationReport(
         n_simulations=len(session_results),
         user_type=user_type,
         product_summary=product_summary,
         metrics=results,
         key_findings=key_findings,
+        adversarial_frictions=adversarial_frictions,
         _metrics_list=metrics,
     )
