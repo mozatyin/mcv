@@ -73,7 +73,7 @@ def _parse_session_output(raw: str, metrics: list[EvaluationMetric]) -> dict[str
             clean = re.sub(r'^[*#>\s]+', '', line.strip())
             m = re.match(pattern, clean, re.IGNORECASE)
             if m:
-                value = re.sub(r'\*+$', '', m.group(1).strip()).strip()
+                value = re.sub(r'^\*+|\*+$', '', m.group(1).strip()).strip()
                 values[metric.name] = value
                 break
     return values
