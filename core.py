@@ -38,30 +38,24 @@ def _haiku_model(api_key: str) -> str:
     return "claude-haiku-4-5-20251001"
 
 
+# Module-level cache: probed once per process, reused across all _llm_call()s.
+# None = not yet probed; "" = auto-bind works; "x.x.x.x" = use explicit address.
+_LOCAL_ADDRESS_CACHE: str | None = None
+
+
 def _resolve_local_address(target_host: str, port: int = 443) -> str | None:
-    """Return the local IPv4 address that can reach target_host, or None.
+    """Return the local IPv4 address that can reliably reach target_host, or None.
 
-    Probes by attempting bind+connect on candidate interfaces. Used to work
-    around macOS routing issues where utun VPN interfaces are up but dead.
+    Result is cached at module level — probed once per process so all subsequent
+    LLM calls reuse the same interface (avoids intermittent utun VPN routing issues).
     """
-    import socket as _socket
-    try:
-        # Fast path: auto-bind works
-        s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-        s.settimeout(2)
-        s.connect((target_host, port))
-        addr = s.getsockname()[0]
-        s.close()
-        return None  # No override needed
-    except OSError:
-        pass
-    finally:
-        try:
-            s.close()
-        except Exception:
-            pass
+    global _LOCAL_ADDRESS_CACHE
+    if _LOCAL_ADDRESS_CACHE is not None:
+        return _LOCAL_ADDRESS_CACHE or None  # "" → None (auto-bind OK)
 
-    # Fallback: enumerate local IPv4 addresses and find one that works
+    import socket as _socket
+
+    # Enumerate non-loopback IPv4 addresses and find the first that can connect
     try:
         candidates = [
             info[4][0]
@@ -74,12 +68,13 @@ def _resolve_local_address(target_host: str, port: int = 443) -> str | None:
         candidates = []
 
     for addr in candidates:
+        s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        s.settimeout(2)
         try:
-            s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-            s.settimeout(2)
             s.bind((addr, 0))
             s.connect((target_host, port))
             s.close()
+            _LOCAL_ADDRESS_CACHE = addr
             return addr
         except Exception:
             try:
@@ -87,6 +82,8 @@ def _resolve_local_address(target_host: str, port: int = 443) -> str | None:
             except Exception:
                 pass
 
+    # Nothing found: let httpx handle it (will fail the same way, but cleanly)
+    _LOCAL_ADDRESS_CACHE = ""
     return None
 
 
@@ -107,18 +104,14 @@ def _llm_call(
     )
     if temperature > 0.0:
         kwargs["temperature"] = temperature
-    import httpx
-    transport = None
     if api_key.startswith("sk-or-"):
-        # On multi-interface systems (VPN utun + wifi), Python may auto-bind to a dead
-        # utun interface. Probe for a valid local address to force the right interface.
+        import httpx
         _local = _resolve_local_address("104.18.3.115")
-        if _local:
-            transport = httpx.HTTPTransport(local_address=_local)
+        _transport = httpx.HTTPTransport(local_address=_local) if _local else None
         client = anthropic.Anthropic(
             api_key=api_key,
             base_url="https://openrouter.ai/api",
-            http_client=httpx.Client(transport=transport) if transport else None,
+            http_client=httpx.Client(transport=_transport) if _transport else None,
         )
     else:
         client = anthropic.Anthropic(api_key=api_key)
