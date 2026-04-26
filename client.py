@@ -463,3 +463,31 @@ class MCVClient:
             "game_name": game_name,
             "original_slug": original_slug,
         }
+
+    def simulate_journey(
+        self,
+        screens: "list[dict] | dict",
+        target_flow: list[str],
+        persona_pool: list,
+        n_personas: int = 12,
+    ) -> "JourneyReport":
+        """Gate 2: validate that personas can complete target_flow before M4 runs.
+
+        Args:
+            screens: M2 canonical_screens (list) or M5 contract.json screens (dict).
+            target_flow: ordered screen_ids, e.g. ["home", "treasure_box", "collect"].
+            persona_pool: list[AgentProfile] from PersonaPool.generate().
+            n_personas: how many personas to simulate (default 12).
+
+        Returns:
+            JourneyReport with completion_rate, drop_off_by_screen, fogg_violations.
+            Check report.passes_gate (>=0.70) before proceeding to M4.
+        """
+        from mcv.journey import simulate_journey as _simulate_journey
+        return _simulate_journey(
+            screens=screens,
+            target_flow=target_flow,
+            persona_pool=persona_pool,
+            api_key=self._api_key,
+            n_personas=n_personas,
+        )
