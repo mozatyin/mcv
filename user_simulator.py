@@ -176,11 +176,7 @@ class UserSimulator:
                 user_type_text = self.user_type
                 role = roles[i % len(roles)] if roles else None
 
-            if self.use_behavioral_framework:
-                budget = COGNITIVE_BUDGETS.get("default", 15)
-                framework_section = BEHAVIORAL_FRAMEWORK_SECTION.format(cognitive_budget=budget)
-            else:
-                framework_section = ""
+            framework_section = ""  # behavioral framework only in adversarial pass
 
             ctx = _random_context_for_domain(role, self.domain_config)
             prompt = _build_session_prompt(

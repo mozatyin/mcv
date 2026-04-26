@@ -350,13 +350,20 @@ def aggregate(
             import logging as _logging
             _logging.getLogger(__name__).debug("key_findings generation skipped: %s", exc)
 
-    # Extract friction themes from adversarial sessions
+    # Extract friction themes from adversarial sessions — only churned sessions (day_1_return_intent=no)
     adversarial_frictions: list[str] = []
     if adversarial_results:
+        _CHURN_VALS = {"no", "false", "0", "否", "不会", "不", "n"}
         adv_texts: list[str] = []
         for sr in adversarial_results:
-            for val in sr.values.values():
-                if val and len(val) > 5:  # skip yes/no/1-5
+            # Only extract text from sessions where the user churned
+            return_val = sr.values.get("day_1_return_intent", "").lower().strip()
+            if return_val not in _CHURN_VALS:
+                continue
+            for name, val in sr.values.items():
+                if name == "day_1_return_intent":
+                    continue
+                if val and len(val) > 10:  # skip yes/no/1-5, keep only friction text
                     adv_texts.append(val)
         if adv_texts:
             adv_mr = _aggregate_text(adv_texts, api_key)
