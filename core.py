@@ -38,6 +38,58 @@ def _haiku_model(api_key: str) -> str:
     return "claude-haiku-4-5-20251001"
 
 
+def _resolve_local_address(target_host: str, port: int = 443) -> str | None:
+    """Return the local IPv4 address that can reach target_host, or None.
+
+    Probes by attempting bind+connect on candidate interfaces. Used to work
+    around macOS routing issues where utun VPN interfaces are up but dead.
+    """
+    import socket as _socket
+    try:
+        # Fast path: auto-bind works
+        s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        s.settimeout(2)
+        s.connect((target_host, port))
+        addr = s.getsockname()[0]
+        s.close()
+        return None  # No override needed
+    except OSError:
+        pass
+    finally:
+        try:
+            s.close()
+        except Exception:
+            pass
+
+    # Fallback: enumerate local IPv4 addresses and find one that works
+    try:
+        candidates = [
+            info[4][0]
+            for info in _socket.getaddrinfo(
+                _socket.gethostname(), None, _socket.AF_INET, _socket.SOCK_STREAM
+            )
+            if not info[4][0].startswith("127.")
+        ]
+    except Exception:
+        candidates = []
+
+    for addr in candidates:
+        try:
+            s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+            s.settimeout(2)
+            s.bind((addr, 0))
+            s.connect((target_host, port))
+            s.close()
+            return addr
+        except Exception:
+            try:
+                s.close()
+            except Exception:
+                pass
+
+    return None
+
+
 def _llm_call(
     prompt: str,
     api_key: str,
@@ -55,8 +107,19 @@ def _llm_call(
     )
     if temperature > 0.0:
         kwargs["temperature"] = temperature
+    import httpx
+    transport = None
     if api_key.startswith("sk-or-"):
-        client = anthropic.Anthropic(api_key=api_key, base_url="https://openrouter.ai/api")
+        # On multi-interface systems (VPN utun + wifi), Python may auto-bind to a dead
+        # utun interface. Probe for a valid local address to force the right interface.
+        _local = _resolve_local_address("104.18.3.115")
+        if _local:
+            transport = httpx.HTTPTransport(local_address=_local)
+        client = anthropic.Anthropic(
+            api_key=api_key,
+            base_url="https://openrouter.ai/api",
+            http_client=httpx.Client(transport=transport) if transport else None,
+        )
     else:
         client = anthropic.Anthropic(api_key=api_key)
     resp = client.messages.create(**kwargs)
