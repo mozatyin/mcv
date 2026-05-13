@@ -13,6 +13,7 @@ from user_soul.stages.launch import LaunchGate
 from user_soul.models import (
     AgentProfile, EvaluationMetric,
     ResearchReport, DesignReviewReport, ModuleUATReport, LaunchReport,
+    PlaytestFeedback, GradedPlaytestFeedback,
 )
 
 
@@ -68,3 +69,28 @@ class UserSoulClient:
         return stage.run(product_description, product_screenshots,
                          competitor_screenshots,
                          personas=personas, metrics=metrics, goal=goal)
+
+    def playtest(self, html_path: str, product_description: str, *,
+                 personas: list[AgentProfile] | None = None,
+                 k_turns: int = 12,
+                 on_progress=None,
+                 game_rules: str = "") -> PlaytestFeedback:
+        from user_soul.playtest_bridge import run_user_playtest
+        pool = personas or self._persona.get_or_create(product_description, n=5)
+        return run_user_playtest(
+            html_path, pool, self._backend,
+            k_turns=k_turns, on_progress=on_progress,
+            game_rules=game_rules,
+        )
+
+    def graded_playtest(self, html_path: str, product_description: str,
+                        gdd: dict, *,
+                        personas: list[AgentProfile] | None = None,
+                        k_turns: int = 12,
+                        on_progress=None) -> "GradedPlaytestFeedback":
+        from user_soul.playtest_bridge import run_graded_playtest
+        pool = personas or self._persona.get_or_create(product_description, n=6)
+        return run_graded_playtest(
+            html_path, pool, self._backend, gdd,
+            k_turns=k_turns, on_progress=on_progress,
+        )

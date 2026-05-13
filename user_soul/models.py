@@ -287,3 +287,100 @@ class LaunchReport:
     benchmark_context: str
     recommendation: str  # "SHIP" | "IMPROVE" | "ABANDON"
     improvement_areas: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Playtest feedback types (bridge User-Soul ↔ Code-Soul playtest)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class PlaytestIssue:
+    severity: str  # "P0" | "P1" | "P2"
+    description: str
+    evidence: list[str] = field(default_factory=list)
+    affected_personas: list[str] = field(default_factory=list)
+    category: str = ""  # "code_bug" | "design_issue" | "ux_friction"
+
+@dataclass
+class PlaytestFeedback:
+    score: float  # 0-100 from FrictionReport
+    verdict: str  # "PASS" | "NEEDS_WORK" | "CRITICAL"
+    issues: list[PlaytestIssue] = field(default_factory=list)
+    suggestions: list[str] = field(default_factory=list)
+    personas_completed: int = 0
+    personas_total: int = 0
+    raw_summary: str = ""
+
+    @property
+    def p0_issues(self) -> list[PlaytestIssue]:
+        return [i for i in self.issues if i.severity == "P0"]
+
+    @property
+    def p1_issues(self) -> list[PlaytestIssue]:
+        return [i for i in self.issues if i.severity == "P1"]
+
+    @property
+    def has_blockers(self) -> bool:
+        return len(self.p0_issues) > 0
+
+
+@dataclass
+class GradedPlaytestFeedback:
+    score: float
+    verdict: str
+    issues: list[PlaytestIssue] = field(default_factory=list)
+    suggestions: list[str] = field(default_factory=list)
+    personas_completed: int = 0
+    personas_total: int = 0
+    raw_summary: str = ""
+
+    tier_feedbacks: dict[str, "PlaytestFeedback"] = field(default_factory=dict)
+    diagnosis: Any = None
+
+    @property
+    def p0_issues(self) -> list[PlaytestIssue]:
+        return [i for i in self.issues if i.severity == "P0"]
+
+    @property
+    def p1_issues(self) -> list[PlaytestIssue]:
+        return [i for i in self.issues if i.severity == "P1"]
+
+    @property
+    def has_blockers(self) -> bool:
+        return len(self.p0_issues) > 0
+
+    @property
+    def tier_scores(self) -> dict[str, float]:
+        return {t: fb.score for t, fb in self.tier_feedbacks.items()}
+
+    @property
+    def diagnosis_categories(self) -> list[str]:
+        if self.diagnosis is None:
+            return []
+        return [d.category.value for d in self.diagnosis.diagnoses]
+
+    @property
+    def primary_owner(self) -> str:
+        if self.diagnosis is None:
+            return "pm-soul"
+        for d in sorted(self.diagnosis.diagnoses,
+                        key=lambda x: {"P0": 0, "P1": 1, "P2": 2}.get(x.severity, 3)):
+            if d.owner:
+                return d.owner
+        return "pm-soul"
+
+
+# ---------------------------------------------------------------------------
+# ActionSpec — structured work item routed from PM-Soul to actors
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ActionSpec:
+    owner: str              # "code-soul" | "eltm" | "pm-soul"
+    action_type: str        # "fix" | "rewrite" | "research" | "redesign" | "add_help" | "generate_variants" | "decide" | "triage"
+    severity: str           # "P0" | "P1" | "P2"
+    description: str
+    evidence: list[str] = field(default_factory=list)
+    payload: dict[str, Any] = field(default_factory=dict)
+    source_tier: str = ""   # "novice" | "casual" | "informed" | "" (all)
+    diagnosis_category: str = ""  # from DiagnosisCategory
